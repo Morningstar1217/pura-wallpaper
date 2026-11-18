@@ -1,0 +1,8 @@
+{
+  "modelVersion": "5.0.0",
+  "name": "pura-wallpaper",
+  "version": "1.0.0",
+  "description": "Pura X 原生鸿蒙壁纸应用",
+  "dependencies": {},
+  "devDependencies": {}
+}

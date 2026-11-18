@@ -1,0 +1,32 @@
+{
+  "color": [
+    {
+      "name": "background",
+      "value": "#171717"
+    },
+    {
+      "name": "surface",
+      "value": "#242424"
+    },
+    {
+      "name": "text",
+      "value": "#F2F2F2"
+    },
+    {
+      "name": "muted",
+      "value": "#A3A3A3"
+    },
+    {
+      "name": "accent",
+      "value": "#E5E5E5"
+    },
+    {
+      "name": "line",
+      "value": "#333333"
+    },
+    {
+      "name": "error",
+      "value": "#FFB4AB"
+    }
+  ]
+}
