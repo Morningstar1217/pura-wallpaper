@@ -72,7 +72,7 @@ const imageModule = moduleUrl('entry/src/main/ets/services/WallpaperImage.ets', 
   ['@kit.MediaLibraryKit', 'data:text/javascript,export const photoAccessHelper = globalThis.__wallpaperMediaKit'],
   ['../core/Wallpaper', coreUrl]
 ]);
-const { WallpaperImage, saveToGallery } = await import(imageModule);
+const { WallpaperImage, saveToGallery, exportAndSaveWallpaper } = await import(imageModule);
 
 test('preview decoding bounds the longest edge at 2048 pixels', async () => {
   reset();
@@ -137,6 +137,42 @@ test('empty exports cannot create gallery entries', async () => {
   reset();
   await assert.rejects(() => saveToGallery({}, new ArrayBuffer(0), 'abc123'));
   assert.deepEqual(state.steps, []);
+});
+
+test('one save operation exports the current crop and sends the JPEG to the gallery', async () => {
+  reset();
+  const image = new WallpaperImage();
+  await image.load(new ArrayBuffer(1));
+  const target = { width: 1276, height: 2848 };
+  const selection = { zoom: 1.5, centerX: 0.6, centerY: 0.45 };
+  const { cropRectangle } = await import(coreUrl);
+  const expected = cropRectangle(3840, 2160, selection, target);
+  assert.equal(await exportAndSaveWallpaper({}, image, selection, target, 'abc123', () => true), true);
+  assert.deepEqual(state.options[1].desiredSize, target);
+  assert.deepEqual(state.options[1].desiredRegion, {
+    x: expected.x, y: expected.y, size: { width: expected.width, height: expected.height }
+  });
+  assert.deepEqual(state.steps, ['create', 'bytes', 'apply', 'release']);
+  assert.deepEqual(new Uint8Array(state.data), new Uint8Array([0xff, 0xd8, 0xff, 0xd9]));
+  await image.release();
+});
+
+test('screen or view changes during export and encoder errors do not create a gallery asset', async () => {
+  reset();
+  const image = new WallpaperImage();
+  await image.load(new ArrayBuffer(1));
+  const selection = { zoom: 1, centerX: 0.5, centerY: 0.5 };
+  const target = { width: 1276, height: 2848 };
+  assert.equal(await exportAndSaveWallpaper({}, image, selection, target, 'abc123', () => false), false);
+  assert.equal(state.options.length, 1);
+  let checks = 0;
+  assert.equal(await exportAndSaveWallpaper({}, image, selection, target, 'abc123', () => ++checks === 1), false);
+  assert.deepEqual(state.steps, []);
+  state.packFailure = true;
+  await assert.rejects(() => exportAndSaveWallpaper({}, image, selection, target, 'abc123', () => true),
+    /native encoder failure/);
+  assert.deepEqual(state.steps, []);
+  await image.release();
 });
 
 

@@ -3,7 +3,7 @@ import { common } from '@kit.AbilityKit';
 import { window } from '@kit.ArkUI';
 import { Wallpaper, WallpaperSize, DeviceProfile, CropSelection, cropRectangle, clamp, purityLabel } from '../core/Wallpaper';
 import { WallhavenService } from '../services/WallhavenService';
-import { WallpaperImage, saveToGallery } from '../services/WallpaperImage';
+import { WallpaperImage, exportAndSaveWallpaper } from '../services/WallpaperImage';
 import { BackButton } from './BackButton';
 
 @Component
@@ -19,10 +19,8 @@ export struct PreviewView {
   readLocal: (id: string) => Promise<ArrayBuffer> = async () => new ArrayBuffer(0);
   @State private pixels: image.PixelMap | undefined = undefined;
   @State private loading: boolean = true;
-  @State private exporting: boolean = false;
   @State private saving: boolean = false;
   @State private originalView: boolean = false;
-  @State private readyToSave: boolean = false;
   @State private errorText: string = '';
   @State private statusText: string = '';
   @State private zoom: number = 1;
@@ -35,7 +33,6 @@ export struct PreviewView {
   @State private fullscreenHeight: number = 386;
   @State private fullscreenTopInset: number = 0;
   private session?: WallpaperImage;
-  private prepared?: ArrayBuffer;
   private original?: ArrayBuffer;
   private service: WallhavenService = new WallhavenService();
   private active: boolean = false;
@@ -56,10 +53,9 @@ export struct PreviewView {
     this.cropFullscreen = false;
     this.generation++;
     this.service.cancel();
-    this.prepared = undefined;
     this.original = undefined;
     this.pixels = undefined;
-    if (!this.exporting) this.releaseSession();
+    if (!this.saving) this.releaseSession();
   }
 
   private async releaseSession(): Promise<void> {
@@ -124,41 +120,19 @@ export struct PreviewView {
     return -crop.y * height / crop.height;
   }
 
-  private invalidateExport(): void {
-    this.readyToSave = false;
-    this.prepared = undefined;
+  private clearSaveFeedback(): void {
     this.errorText = '';
     this.statusText = '';
   }
 
   private move(event: GestureEvent): void {
-    if (!this.session || this.exporting || this.saving) return;
+    if (!this.session || this.saving) return;
     const crop = cropRectangle(this.session.width, this.session.height, this.selection(), this.deviceProfile);
     const x = this.panX - event.offsetX * crop.width / this.frameWidth / this.session.width;
     const y = this.panY - event.offsetY * crop.height / this.frameHeight / this.session.height;
     this.centerX = clamp(x, crop.width / 2 / this.session.width, 1 - crop.width / 2 / this.session.width);
     this.centerY = clamp(y, crop.height / 2 / this.session.height, 1 - crop.height / 2 / this.session.height);
-    this.invalidateExport();
-  }
-
-  private async prepare(): Promise<void> {
-    if (!this.session || this.exporting || this.saving) return;
-    this.exporting = true;
-    this.errorText = '';
-    this.statusText = '';
-    try {
-      const target: WallpaperSize = { width: this.deviceProfile.width, height: this.deviceProfile.height };
-      const data = await this.session.exportJpeg(this.selection(), target);
-      if (this.active && this.deviceProfile.width === target.width && this.deviceProfile.height === target.height) {
-        this.prepared = data;
-        this.readyToSave = true;
-      }
-    } catch {
-      if (this.active) this.errorText = '生成壁纸失败，请重试';
-    } finally {
-      this.exporting = false;
-      if (!this.active) this.releaseSession();
-    }
+    this.clearSaveFeedback();
   }
 
   private async save(result: SaveButtonOnClickResult): Promise<void> {
@@ -168,23 +142,27 @@ export struct PreviewView {
       }
       return;
     }
-    const data = this.prepared;
-    if (!data || this.saving) return;
+    const session = this.session;
+    if (!this.active || !session || this.saving) return;
+    const target: WallpaperSize = { width: this.deviceProfile.width, height: this.deviceProfile.height };
+    const generation = this.generation;
     this.saving = true;
     this.onBusy(true);
-    this.errorText = '';
+    this.clearSaveFeedback();
     try {
       const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
-      await saveToGallery(context, data, this.wallpaper.id);
+      const saved = await exportAndSaveWallpaper(context, session, this.selection(), target, this.wallpaper.id,
+        () => this.active && generation === this.generation && this.deviceProfile.width === target.width &&
+          this.deviceProfile.height === target.height);
       if (this.active) {
-        this.statusText = '已保存到图库，可在图库中设为壁纸';
-        this.readyToSave = false;
-        this.prepared = undefined;
+        if (saved) this.statusText = '已保存到图库，可在图库中设为壁纸';
+        else this.errorText = '屏幕尺寸已变化，请重新保存';
       }
     } catch {
       if (this.active) this.errorText = '保存到图库失败，请重试';
     } finally {
-      if (this.active) this.saving = false;
+      this.saving = false;
+      if (!this.active) this.releaseSession();
       this.onBusy(false);
     }
   }
@@ -204,9 +182,9 @@ export struct PreviewView {
             PinchGesture().onActionStart(() => {
               this.pinchZoom = this.zoom;
             }).onActionUpdate((event: GestureEvent) => {
-              if (this.exporting || this.saving) return;
+              if (this.saving) return;
               this.zoom = clamp(this.pinchZoom * event.scale, 1, 3);
-              this.invalidateExport();
+              this.clearSaveFeedback();
             }),
             PanGesture().onActionStart(() => {
               if (!this.session) return;
@@ -238,7 +216,7 @@ export struct PreviewView {
   }
 
   private showCroppedPreview(): void {
-    if (!this.pixels || !this.session || this.exporting || this.saving) return;
+    if (!this.pixels || !this.session || this.saving) return;
     const context = this.getUIContext();
     try {
       const host = context.getHostContext() as common.UIAbilityContext;
@@ -279,7 +257,7 @@ export struct PreviewView {
 
   private onDeviceProfileChanged(): void {
     this.cropFullscreen = false;
-    this.invalidateExport();
+    this.clearSaveFeedback();
     this.updateFrameSize();
   }
 
@@ -293,25 +271,25 @@ export struct PreviewView {
   @Builder
   private controls() {
     Column({ space: 14 }) {
-      Row() {
-        Text(this.deviceProfile.name).fontSize(20).fontWeight(FontWeight.Bold).fontColor($r('app.color.text'))
-          .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1).margin({ right: 12 })
-        Text(this.deviceProfile.width + ' × ' + this.deviceProfile.height).fontSize(13).fontColor($r('app.color.muted'))
-      }.width('100%')
+      Column({ space: 3 }) {
+        Text(this.deviceProfile.name).width('100%').fontSize(15).fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.text')).wordBreak(WordBreak.BREAK_WORD)
+        Text(this.deviceProfile.width + ' × ' + this.deviceProfile.height).fontSize(12).fontColor($r('app.color.muted'))
+      }.width('100%').alignItems(HorizontalAlign.Start)
       Row({ space: 8 }) {
         Button('查看原图').height(36).fontSize(13)
           .backgroundColor($r('app.color.surface')).fontColor($r('app.color.accent'))
-          .enabled(this.pixels !== undefined && !this.exporting && !this.saving)
+          .enabled(this.pixels !== undefined && !this.saving)
           .onClick(() => this.originalView = true)
         Blank()
         Button('重置').height(36).fontSize(13)
           .backgroundColor(Color.Transparent).fontColor($r('app.color.muted'))
-          .enabled(!this.exporting && !this.saving)
+          .enabled(!this.saving)
           .onClick(() => {
             this.zoom = 1;
             this.centerX = 0.5;
             this.centerY = 0.5;
-            this.invalidateExport();
+            this.clearSaveFeedback();
           })
       }.width('100%')
       Column({ space: 4 }) {
@@ -319,10 +297,11 @@ export struct PreviewView {
           Text('缩放').fontSize(13).fontColor($r('app.color.muted'))
           Slider({ value: this.zoom, min: 1, max: 3, step: 0.01 })
             .layoutWeight(1).selectedColor($r('app.color.accent'))
-            .enabled(!this.exporting && !this.saving)
+            .enabled(!this.saving)
             .onChange((value: number) => {
+              if (this.saving) return;
               this.zoom = value;
-              this.invalidateExport();
+              this.clearSaveFeedback();
             })
           Text(this.zoom.toFixed(1) + '×').fontSize(13).width(36).fontColor($r('app.color.muted'))
         }.width('100%')
@@ -335,18 +314,17 @@ export struct PreviewView {
       if (this.errorText.length > 0 && this.pixels) {
         Text(this.errorText).fontSize(14).fontColor($r('app.color.error')).lineHeight(22)
       }
-      if (this.readyToSave) {
-        SaveButton({ icon: SaveIconStyle.FULL_FILLED, text: SaveDescription.SAVE_IMAGE, buttonType: ButtonType.Capsule })
-          .width('100%').height(48).fontSize(16)
-          .backgroundColor($r('app.color.accent')).fontColor($r('app.color.on_accent'))
-          .enabled(!this.saving).userCancelEvent(true)
-          .onClick((_event: ClickEvent, result: SaveButtonOnClickResult) => this.save(result))
-      } else {
-        Button(this.exporting ? '生成中…' : this.saving ? '保存中…' : '生成壁纸')
-          .width('100%').height(48).fontSize(16)
-          .backgroundColor($r('app.color.accent')).fontColor($r('app.color.on_accent'))
-          .enabled(this.pixels !== undefined && !this.exporting && !this.saving)
-          .onClick(() => this.prepare())
+      SaveButton({ icon: SaveIconStyle.FULL_FILLED, text: SaveDescription.SAVE_TO_GALLERY, buttonType: ButtonType.Capsule })
+        .width('100%').constraintSize({ minHeight: 52 }).fontSize(16).fontWeight(FontWeight.Medium)
+        .iconSize(24).textIconSpace(8).iconColor($r('app.color.on_accent'))
+        .backgroundColor($r('app.color.accent')).fontColor($r('app.color.on_accent'))
+        .enabled(this.pixels !== undefined && !this.saving).userCancelEvent(true)
+        .onClick((_event: ClickEvent, result: SaveButtonOnClickResult) => this.save(result))
+      if (this.saving) {
+        Row({ space: 8 }) {
+          LoadingProgress().width(18).height(18).color($r('app.color.accent'))
+          Text('正在裁剪并保存…').fontSize(13).fontColor($r('app.color.muted'))
+        }.width('100%').justifyContent(FlexAlign.Center)
       }
     }.width('100%').padding(18).borderRadius(24).backgroundColor($r('app.color.surface'))
   }

@@ -84,3 +84,12 @@ export async function saveToGallery(context: common.UIAbilityContext, data: Arra
     await helper.release();
   }
 }
+
+export async function exportAndSaveWallpaper(context: common.UIAbilityContext, session: WallpaperImage,
+  selection: CropSelection, target: WallpaperSize, id: string, canSave: () => boolean): Promise<boolean> {
+  if (!canSave()) return false;
+  const data = await session.exportJpeg(selection, target);
+  if (!canSave()) return false;
+  await saveToGallery(context, data, id);
+  return true;
+}

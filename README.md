@@ -5,7 +5,7 @@
 <h1 align="center">映壁 · Pura Wallpaper</h1>
 <p align="center">面向 HarmonyOS 手机的壁纸浏览、裁剪和导出工具</p>
 
-**当前版本 `1.0.9`** · ArkTS / ArkUI · HarmonyOS API 26
+**当前版本 `1.0.10`** · ArkTS / ArkUI · HarmonyOS API 26
 
 ## 功能
 
@@ -59,7 +59,7 @@ export DEVECO_HOME="/Applications/DevEco-Studio.app/Contents"
 1. 从 **发现** 看每日推荐，或点击 **浏览壁纸库** 进入图库。在图库点分类或输入关键词；点分类可退出 360 全库搜索。
 2. 右上角齿轮可切换图库来源。选择 **Wallhaven (CC)** 后，若要查看收藏，请在 [Wallhaven 账户设置](https://wallhaven.cc/settings/account) 获取 API Key，并填写同一账户的用户名。仅启用 NSFW 时，可只填 API Key。
 3. 打开壁纸并调整裁剪范围，点击裁剪图检查全屏效果。
-4. 点击 **生成壁纸**，再用系统 **保存图片** 按钮写入图库。在图库中打开图片即可设置壁纸。
+4. 点击 **保存到图库**，首次按系统提示授权后，应用会在同一次操作中裁剪并保存图片。在系统图库中打开图片即可设置壁纸。
 
 图库来源保存在 HarmonyOS ArkData 用户首选项中。用户名和 API Key 通过系统 AssetStoreKit 保存；切换来源不会删除凭据。Key 仅用于 Wallhaven API 的 `X-API-Key` 请求头，不会发给必应、360 或图片 CDN。将 Key 留空并保存可清除账户配置。
 

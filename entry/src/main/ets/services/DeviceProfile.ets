@@ -9,7 +9,8 @@ export function getDeviceProfile(): DeviceProfile {
     throw new Error('图片尺寸或裁剪参数无效');
   }
   return {
-    name: deviceInfo.marketName.trim() || deviceInfo.productModel,
+    name: deviceInfo.marketName.trim().replace(/^(?:HUAWEI(?:\s+|$)|华为\s*)/i, '').trim() ||
+      deviceInfo.productModel.trim(),
     width: screen.width,
     height: screen.height
   };
