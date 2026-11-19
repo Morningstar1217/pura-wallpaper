@@ -272,7 +272,7 @@ export struct PreviewView {
         this.fullscreenHeight = this.fullscreenWidth / ratio;
       })
       .onClick(() => this.cropFullscreen = false)
-      BackButton({ label: '裁剪预览', foreground: '#FFFFFF', buttonBackground: '#88000000',
+      BackButton({ label: '退出全屏裁剪预览', iconOnly: true, foreground: '#FFFFFF', buttonBackground: '#88000000',
         onBack: () => this.cropFullscreen = false }).margin({ top: 16 + this.fullscreenTopInset, left: 16 })
     }.width('100%').height('100%').backgroundColor('#000000')
   }
@@ -355,13 +355,13 @@ export struct PreviewView {
     if (this.originalView && this.pixels) {
       Stack({ alignContent: Alignment.TopStart }) {
         Image(this.pixels).width('100%').height('100%').objectFit(ImageFit.Contain).alt('壁纸原图预览')
-        BackButton({ label: '裁剪预览', foreground: '#FFFFFF', buttonBackground: '#88000000',
+        BackButton({ label: '返回裁剪页面', iconOnly: true, foreground: '#FFFFFF', buttonBackground: '#88000000',
           onBack: () => this.originalView = false }).margin(16)
       }.width('100%').height('100%').backgroundColor('#111111')
     } else {
       Column({ space: 14 }) {
         Row() {
-          BackButton({ isEnabled: !this.saving, onBack: () => this.onBack() })
+          BackButton({ iconOnly: true, isEnabled: !this.saving, onBack: () => this.onBack() })
           Blank()
           Text(purityLabel(this.wallpaper.purity)).fontSize(13).fontColor($r('app.color.muted')).margin({ right: 10 })
           Text(this.session ? this.session.width + 'x' + this.session.height : this.wallpaper.resolution)

@@ -28,6 +28,7 @@ export struct HomeView {
   @State private tokenAvailable: boolean = false;
   @State private query: string = '';
   @State private submittedQuery: string = '';
+  @State private searchOpen: boolean = false;
   @State private wallpapers: Wallpaper[] = [];
   @State private collections: Collection[] = [];
   @State private selectedCollection: Collection | undefined = undefined;
@@ -42,6 +43,7 @@ export struct HomeView {
   private gallery: Gallery360Service = new Gallery360Service();
   private gridScroller: Scroller = new Scroller();
   private navScroll: NavigationScroll = new NavigationScroll();
+  private searchController: SearchController = new SearchController();
 
   aboutToAppear(): void {
     this.initialized = true;
@@ -79,7 +81,7 @@ export struct HomeView {
   }
 
   private onActivated(): void {
-    if (!this.active) this.navScroll.stop();
+    if (!this.active) this.navScroll.reset();
     if (this.initialized && this.active && this.needsReload) this.reload();
   }
 
@@ -111,7 +113,7 @@ export struct HomeView {
   }
 
   private async reload(): Promise<void> {
-    this.navScroll.stop();
+    this.navScroll.reset();
     if (!this.collectionsMode) this.onNavHidden(false);
     this.needsReload = false;
     const generation = ++this.generation;
@@ -143,9 +145,10 @@ export struct HomeView {
     }
   }
 
-  private updateNavigation(): void {
+  private updateNavigation(delta: number, source: ScrollSource): void {
     if (!this.active || this.collectionsMode || this.keyboardVisible) return;
-    const next = this.navScroll.update(this.gridScroller.currentOffset().yOffset, this.navHidden);
+    const next = this.navScroll.update(delta, this.navHidden,
+      source === ScrollSource.DRAG || source === ScrollSource.OTHER_USER_INPUT);
     if (next !== this.navHidden) this.onNavHidden(next);
   }
 
@@ -176,12 +179,17 @@ export struct HomeView {
 
   @Builder
   private topicButton(topic: GalleryTopic) {
-    Button(topic.label, { type: ButtonType.Normal })
-      .fontSize(13).height(32).padding({ left: 10, right: 10 }).borderRadius(16)
-      .backgroundColor(this.submittedQuery.length === 0 && this.topic === topic.id ?
-        $r('app.color.accent') : $r('app.color.control_fill'))
-      .fontColor(this.submittedQuery.length === 0 && this.topic === topic.id ?
-        $r('app.color.on_accent') : $r('app.color.text'))
+    Button({ type: ButtonType.Normal }) {
+      Column({ space: 4 }) {
+        Text(topic.label).fontSize(14).maxLines(1)
+          .fontColor(this.submittedQuery.length === 0 && this.topic === topic.id ?
+            $r('app.color.accent') : $r('app.color.muted'))
+          .fontWeight(this.submittedQuery.length === 0 && this.topic === topic.id ? FontWeight.Bold : FontWeight.Medium)
+        Row().width(16).height(2).borderRadius(1)
+          .backgroundColor(this.submittedQuery.length === 0 && this.topic === topic.id ?
+            $r('app.color.accent') : Color.Transparent)
+      }.justifyContent(FlexAlign.Center)
+    }.height(44).padding({ left: 7, right: 7 }).backgroundColor(Color.Transparent)
       .accessibilitySelected(this.submittedQuery.length === 0 && this.topic === topic.id)
       .onClick(() => this.selectTopic(topic.id))
   }
@@ -191,7 +199,14 @@ export struct HomeView {
     this.topic = topic;
     this.query = '';
     this.submittedQuery = '';
+    this.closeSearch();
     this.reload();
+  }
+
+  private closeSearch(): void {
+    if (!this.searchOpen) return;
+    this.searchController.stopEditing();
+    this.searchOpen = false;
   }
 
   @Builder
@@ -254,30 +269,31 @@ export struct HomeView {
   }
 
   @Builder
+  private wallpaperImage(item: Wallpaper) {
+    Image(item.thumbs.large).width('100%').aspectRatio(0.79)
+      .objectFit(ImageFit.Cover).borderRadius(14).backgroundColor($r('app.color.control_fill'))
+      .accessibilityLevel('no')
+  }
+
+  @Builder
   private wallpaperGrid() {
-    WaterFlow({ scroller: this.gridScroller }) {
+    WaterFlow() {
       ForEach(this.wallpapers, (item: Wallpaper) => {
         FlowItem() {
-          Image(item.thumbs.large).width('100%').aspectRatio(0.79)
-            .objectFit(ImageFit.Cover).borderRadius(14).backgroundColor($r('app.color.control_fill'))
-            .accessibilityLevel('no')
+          this.wallpaperImage(item)
         }.width('100%').clip(true).focusable(true).onClick(() => this.onOpen(item))
         .accessibilityText('预览壁纸 ' + item.id + '，' + item.resolution +
           (item.purity === undefined ? '' : '，' + purityLabel(item.purity)))
       }, (item: Wallpaper) => item.id)
     }
     .columnsTemplate('1fr '.repeat(this.columns).trim()).columnsGap(10).rowsGap(14)
-    .layoutWeight(1).width('100%').contentEndOffset(this.collectionsMode || this.keyboardVisible ? 0 :
-      FLOATING_NAV_CONTENT_INSET).cachedCount(this.columns * 2)
-    .onTouch((event: TouchEvent) => {
-      if (event.type === TouchType.Down) this.navScroll.start(this.gridScroller.currentOffset().yOffset);
-      else if (event.type === TouchType.Cancel) this.navScroll.stop();
-    })
-    .onDidScroll(() => this.updateNavigation()).onScrollStop(() => this.navScroll.stop())
-    .scrollBar(BarState.Off).onReachEnd(() => {
-      if (this.page >= this.lastPage || this.errorText.length > 0) this.onNavHidden(false);
-      this.loadMore();
-    })
+    .layoutWeight(1).width('100%').cachedCount(this.columns * 2)
+    .scrollBar(BarState.Off).onReachEnd(() => this.loadMore())
+    this.pagingState()
+  }
+
+  @Builder
+  private pagingState() {
     if (this.errorText.length > 0) {
       Row({ space: 12 }) {
         Text(this.errorText).fontSize(13).fontColor($r('app.color.error')).layoutWeight(1)
@@ -289,6 +305,110 @@ export struct HomeView {
     } else if (this.loading) {
       LoadingProgress().width(24).height(24).color($r('app.color.accent')).margin({ top: 8 })
     }
+  }
+
+  @Builder
+  private galleryFilters() {
+    Column() {
+      Row({ space: 4 }) {
+        Scroll() {
+          if (this.source === GallerySource.Gallery360) {
+            Row({ space: 8 }) {
+              ForEach(GALLERY_TOPICS, (topic: GalleryTopic) => {
+                this.topicButton(topic)
+              }, (topic: GalleryTopic) => topic.id)
+            }
+          } else {
+            Row({ space: 5 }) {
+              this.sortButton('热门', 'toplist')
+              this.sortButton('最新', 'date_added')
+              this.purityButton('SFW', 0)
+              this.purityButton('Sketchy', 1)
+              this.purityButton('NSFW', 2)
+            }
+          }
+        }.layoutWeight(1).height(44).align(Alignment.Start)
+          .scrollable(ScrollDirection.Horizontal).scrollBar(BarState.Off)
+        Button({ type: ButtonType.Circle }) {
+          SymbolGlyph(this.searchOpen ? $r('sys.symbol.xmark') : $r('sys.symbol.magnifyingglass'))
+            .fontSize(21).fontColor([this.searchOpen || this.submittedQuery.length > 0 ?
+              $r('app.color.accent') : $r('app.color.text')]).accessibilityLevel('no')
+        }.width(44).height(44).padding(0).backgroundColor(Color.Transparent)
+          .accessibilityText(this.searchOpen ? '收起搜索' : '搜索壁纸')
+          .onClick(() => {
+            if (this.searchOpen) this.closeSearch();
+            else this.searchOpen = true;
+          })
+      }.width('100%')
+      if (this.searchOpen) {
+        Search({ value: this.query, placeholder: '搜索壁纸', controller: this.searchController })
+          .id('gallerySearchInput').width('100%').height(44).margin({ bottom: 6 })
+          .backgroundColor($r('app.color.control_fill')).fontColor($r('app.color.text'))
+          .placeholderColor($r('app.color.muted'))
+          .onAppear(() => this.getUIContext().getFocusController().requestFocus('gallerySearchInput'))
+          .onChange((value: string) => {
+            this.query = value;
+            if (value.length === 0 && this.submittedQuery.length > 0) {
+              this.submittedQuery = '';
+              this.reload();
+            }
+          })
+          .onSubmit((value: string) => {
+            this.query = value.trim();
+            this.submittedQuery = this.query;
+            this.closeSearch();
+            this.reload();
+          })
+      }
+      Divider().color($r('app.color.line'))
+    }.width('100%').backgroundColor($r('app.color.background'))
+  }
+
+  @Builder
+  private galleryFooter() {
+    if (this.wallpapers.length === 0) {
+      Column() {
+        this.emptyState()
+      }.width('100%').height(200)
+    } else {
+      Column() {
+        this.pagingState()
+      }.width('100%')
+    }
+  }
+
+  @Builder
+  private galleryList() {
+    List({ scroller: this.gridScroller }) {
+      ListItemGroup() {
+        ListItem() {
+          Column({ space: 4 }) {
+            MainTitle({ title: '图库', onSettings: () => this.onSettings() })
+            Text('来源：' + gallerySourceLabel(this.source) + (this.submittedQuery.length > 0 ?
+              ' · 搜索：' + this.submittedQuery : '')).width('100%').fontSize(13)
+              .fontColor($r('app.color.muted')).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+          }.width('100%').padding({ bottom: 4 })
+        }
+      }
+      ListItemGroup({ header: this.galleryFilters(), footer: this.galleryFooter(), space: 14 }) {
+        ForEach(this.wallpapers, (item: Wallpaper) => {
+          ListItem() {
+            this.wallpaperImage(item)
+          }.focusable(true).onClick(() => this.onOpen(item))
+            .accessibilityText('预览壁纸 ' + item.id + '，' + item.resolution +
+              (item.purity === undefined ? '' : '，' + purityLabel(item.purity)))
+        }, (item: Wallpaper) => item.id)
+      }
+    }.width('100%').layoutWeight(1).lanes(this.columns, 10).sticky(StickyStyle.Header)
+      .cachedCount(this.columns * 2).scrollBar(BarState.Off)
+      .contentEndOffset(this.keyboardVisible ? 0 : FLOATING_NAV_CONTENT_INSET)
+      .onWillScroll((delta: number, _state: ScrollState, source: ScrollSource) => this.updateNavigation(delta, source))
+      .onScrollStop(() => this.navScroll.reset())
+      .onReachStart(() => this.onNavHidden(false))
+      .onReachEnd(() => {
+        if (this.page >= this.lastPage || this.errorText.length > 0) this.onNavHidden(false);
+        this.loadMore();
+      })
   }
 
   @Builder
@@ -314,80 +434,40 @@ export struct HomeView {
 
   build() {
     Column({ space: 8 }) {
-      if (this.collectionsMode) {
-        BackButton({ label: 'Wallhaven 收藏集', onBack: () => this.onBack() })
-      } else {
-        MainTitle({ title: '图库', onSettings: () => this.onSettings() })
-      }
       if (!this.collectionsMode) {
-        Search({ value: this.query, placeholder: '搜索壁纸' })
-          .height(44).margin(0).backgroundColor($r('app.color.control_fill')).fontColor($r('app.color.text'))
-          .placeholderColor($r('app.color.muted'))
-          .onChange((value: string) => {
-            this.query = value;
-            if (value.length === 0 && this.submittedQuery.length > 0) {
-              this.submittedQuery = '';
-              this.reload();
-            }
-          })
-          .onSubmit((value: string) => {
-            this.submittedQuery = value.trim();
-            this.reload();
-          })
-        Row({ space: 4 }) {
-          Text('来源：' + gallerySourceLabel(this.source)).fontSize(13).fontColor($r('app.color.muted'))
-          if (this.source === GallerySource.Gallery360 && this.submittedQuery.length > 0) {
-            Text('· 全库搜索').fontSize(12).fontColor($r('app.color.muted'))
-          }
-        }.width('100%').margin({ top: 3, bottom: 2 })
-        if (this.source === GallerySource.Gallery360) {
-          Scroll() {
-            Row({ space: 8 }) {
-              ForEach(GALLERY_TOPICS, (topic: GalleryTopic) => {
-                this.topicButton(topic)
-              }, (topic: GalleryTopic) => topic.id)
-            }
-          }.width('100%').scrollable(ScrollDirection.Horizontal).scrollBar(BarState.Off)
-        } else {
-          Scroll() {
-            Row({ space: 5 }) {
-              this.sortButton('热门', 'toplist')
-              this.sortButton('最新', 'date_added')
-              this.purityButton('SFW', 0)
-              this.purityButton('Sketchy', 1)
-              this.purityButton('NSFW', 2)
-            }
-          }.width('100%').scrollable(ScrollDirection.Horizontal).scrollBar(BarState.Off)
-        }
-      } else if (this.selectedCollection) {
-        Row({ space: 8 }) {
-          BackButton({ label: '收藏集', onBack: () => {
-            this.selectedCollection = undefined;
-            this.reload();
-          } })
-
-          Text(this.selectedCollection.label).fontSize(15).layoutWeight(1)
-            .fontColor($r('app.color.text')).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
-          this.purityButton('SFW', 0)
-          this.purityButton('Sketchy', 1)
-          this.purityButton('NSFW', 2)
-          Button('刷新').height(36).backgroundColor(Color.Transparent)
-            .fontColor($r('app.color.muted')).onClick(() => this.reload())
-        }.width('100%')
-      } else if (this.hasCollectionAccount()) {
-        Row() {
-          Text('Wallhaven · ' + this.username).fontSize(14).layoutWeight(1).maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis }).fontColor($r('app.color.text')).fontWeight(FontWeight.Medium)
-          Button('刷新').height(36).backgroundColor(Color.Transparent)
-            .fontColor($r('app.color.muted')).onClick(() => this.reload())
-        }.width('100%')
-      }
-      if (this.wallpapers.length > 0) {
-        this.wallpaperGrid()
-      } else if (this.collections.length > 0) {
-        this.collectionList()
+        this.galleryList()
       } else {
-        this.emptyState()
+        BackButton({ label: 'Wallhaven 收藏集', onBack: () => this.onBack() })
+        if (this.selectedCollection) {
+          Row({ space: 8 }) {
+            BackButton({ label: '收藏集', onBack: () => {
+              this.selectedCollection = undefined;
+              this.reload();
+            } })
+            Text(this.selectedCollection.label).fontSize(15).layoutWeight(1)
+              .fontColor($r('app.color.text')).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+            this.purityButton('SFW', 0)
+            this.purityButton('Sketchy', 1)
+            this.purityButton('NSFW', 2)
+            Button('刷新').height(36).backgroundColor(Color.Transparent)
+              .fontColor($r('app.color.muted')).onClick(() => this.reload())
+          }.width('100%')
+        } else if (this.hasCollectionAccount()) {
+          Row() {
+            Text('Wallhaven · ' + this.username).fontSize(14).layoutWeight(1).maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis }).fontColor($r('app.color.text'))
+              .fontWeight(FontWeight.Medium)
+            Button('刷新').height(36).backgroundColor(Color.Transparent)
+              .fontColor($r('app.color.muted')).onClick(() => this.reload())
+          }.width('100%')
+        }
+        if (this.wallpapers.length > 0) {
+          this.wallpaperGrid()
+        } else if (this.collections.length > 0) {
+          this.collectionList()
+        } else {
+          this.emptyState()
+        }
       }
     }.width('100%').height('100%').padding({ left: 16, right: 16, top: 4, bottom: 4 })
     .backgroundColor($r('app.color.background'))

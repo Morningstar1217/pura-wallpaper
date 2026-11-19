@@ -3,32 +3,22 @@ export const FLOATING_NAV_BOTTOM_GAP: number = 12;
 export const FLOATING_NAV_CONTENT_INSET: number = FLOATING_NAV_HEIGHT + FLOATING_NAV_BOTTOM_GAP + 12;
 
 export class NavigationScroll {
-  private anchor: number = 0;
-  private tracking: boolean = false;
+  private travel: number = 0;
 
-  start(offset: number): void {
-    this.anchor = Math.max(0, offset);
-    this.tracking = true;
+  reset(): void {
+    this.travel = 0;
   }
 
-  stop(): void {
-    this.tracking = false;
-  }
-
-  update(offset: number, hidden: boolean): boolean {
-    if (!this.tracking || !Number.isFinite(offset)) return hidden;
-    const top = Math.max(0, offset);
-    if (top <= 8) {
-      this.anchor = top;
-      return false;
-    }
-    const delta = top - this.anchor;
+  // ArkUI reports positive deltas when the content moves up toward later items.
+  update(delta: number, hidden: boolean, fromUser: boolean): boolean {
+    if (!fromUser || !Number.isFinite(delta)) return hidden;
     if (hidden ? delta > 0 : delta < 0) {
-      this.anchor = top;
+      this.reset();
       return hidden;
     }
-    if (hidden ? delta <= -28 : delta >= 48) {
-      this.anchor = top;
+    this.travel += delta;
+    if (hidden ? this.travel <= -12 : this.travel >= 48) {
+      this.reset();
       return !hidden;
     }
     return hidden;

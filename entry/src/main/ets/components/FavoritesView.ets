@@ -21,12 +21,13 @@ export struct FavoritesView {
   private navScroll: NavigationScroll = new NavigationScroll();
 
   private onActiveChanged(): void {
-    if (!this.active) this.navScroll.stop();
+    if (!this.active) this.navScroll.reset();
   }
 
-  private updateNavigation(): void {
+  private updateNavigation(delta: number, source: ScrollSource): void {
     if (!this.active || this.keyboardVisible) return;
-    const next = this.navScroll.update(this.gridScroller.currentOffset().yOffset, this.navHidden);
+    const next = this.navScroll.update(delta, this.navHidden,
+      source === ScrollSource.DRAG || source === ScrollSource.OTHER_USER_INPUT);
     if (next !== this.navHidden) this.onNavHidden(next);
   }
 
@@ -51,11 +52,9 @@ export struct FavoritesView {
               .onClick(() => this.onOpen(item))
           }, (item: Wallpaper) => item.id)
         }.width('100%').layoutWeight(1).contentEndOffset(FLOATING_NAV_CONTENT_INSET).columnsGap(10).rowsGap(10)
-          .onTouch((event: TouchEvent) => {
-            if (event.type === TouchType.Down) this.navScroll.start(this.gridScroller.currentOffset().yOffset);
-            else if (event.type === TouchType.Cancel) this.navScroll.stop();
-          })
-          .onDidScroll(() => this.updateNavigation()).onScrollStop(() => this.navScroll.stop())
+          .onWillScroll((delta: number, _state: ScrollState, source: ScrollSource) => this.updateNavigation(delta, source))
+          .onScrollStop(() => this.navScroll.reset())
+          .onReachStart(() => this.onNavHidden(false))
           .onReachEnd(() => this.onNavHidden(false))
           .columnsTemplate('1fr '.repeat(this.columns).trim()).scrollBar(BarState.Off)
       } else {
