@@ -5,6 +5,7 @@ import { WallhavenService } from '../services/WallhavenService';
 import { Gallery360Service } from '../services/Gallery360Service';
 import { GallerySource, gallerySourceLabel } from '../core/GallerySource';
 import { MainTitle } from './MainTitle';
+import { FLOATING_NAV_CONTENT_INSET, NavigationScroll } from '../core/FloatingNavigation';
 
 @Component
 export struct HomeView {
@@ -12,10 +13,14 @@ export struct HomeView {
   @Prop @Watch('onActivated') active: boolean = false;
   @Prop @Watch('onSourceChanged') source: GallerySource = GallerySource.Gallery360;
   @Prop collectionsMode: boolean = false;
+  @Prop navHidden: boolean = false;
+  @Prop keyboardVisible: boolean = false;
+  onNavHidden: (hidden: boolean) => void = () => {};
   @Prop @Watch('onAccountChanged') accountRevision: number = 0;
   getUsername: () => string = () => '';
   onOpen: (wallpaper: Wallpaper) => void = () => {};
   onSettings: () => void = () => {};
+  onBack: () => void = () => {};
   @State private topic: string = 'all';
   @State private username: string = '';
   @State private sorting: string = 'toplist';
@@ -35,6 +40,8 @@ export struct HomeView {
   private initialized: boolean = false;
   private needsReload: boolean = true;
   private gallery: Gallery360Service = new Gallery360Service();
+  private gridScroller: Scroller = new Scroller();
+  private navScroll: NavigationScroll = new NavigationScroll();
 
   aboutToAppear(): void {
     this.initialized = true;
@@ -72,6 +79,7 @@ export struct HomeView {
   }
 
   private onActivated(): void {
+    if (!this.active) this.navScroll.stop();
     if (this.initialized && this.active && this.needsReload) this.reload();
   }
 
@@ -103,6 +111,8 @@ export struct HomeView {
   }
 
   private async reload(): Promise<void> {
+    this.navScroll.stop();
+    if (!this.collectionsMode) this.onNavHidden(false);
     this.needsReload = false;
     const generation = ++this.generation;
     this.gallery.cancel();
@@ -133,6 +143,12 @@ export struct HomeView {
     }
   }
 
+  private updateNavigation(): void {
+    if (!this.active || this.collectionsMode || this.keyboardVisible) return;
+    const next = this.navScroll.update(this.gridScroller.currentOffset().yOffset, this.navHidden);
+    if (next !== this.navHidden) this.onNavHidden(next);
+  }
+
   private async loadMore(): Promise<void> {
     if (!this.active || this.needsReload || this.loading || this.errorText.length > 0 || this.page < 1 ||
       this.page >= this.lastPage) return;
@@ -159,12 +175,15 @@ export struct HomeView {
   }
 
   @Builder
-  private filterButton(label: string, selected: boolean, action: () => void) {
-    Button(label, { type: ButtonType.Normal })
+  private topicButton(topic: GalleryTopic) {
+    Button(topic.label, { type: ButtonType.Normal })
       .fontSize(13).height(32).padding({ left: 10, right: 10 }).borderRadius(16)
-      .backgroundColor(selected ? $r('app.color.accent') : $r('app.color.control_fill'))
-      .fontColor(selected ? $r('app.color.on_accent') : $r('app.color.text'))
-      .accessibilitySelected(selected).onClick(action)
+      .backgroundColor(this.submittedQuery.length === 0 && this.topic === topic.id ?
+        $r('app.color.accent') : $r('app.color.control_fill'))
+      .fontColor(this.submittedQuery.length === 0 && this.topic === topic.id ?
+        $r('app.color.on_accent') : $r('app.color.text'))
+      .accessibilitySelected(this.submittedQuery.length === 0 && this.topic === topic.id)
+      .onClick(() => this.selectTopic(topic.id))
   }
 
   private selectTopic(topic: string): void {
@@ -236,7 +255,7 @@ export struct HomeView {
 
   @Builder
   private wallpaperGrid() {
-    WaterFlow() {
+    WaterFlow({ scroller: this.gridScroller }) {
       ForEach(this.wallpapers, (item: Wallpaper) => {
         FlowItem() {
           Image(item.thumbs.large).width('100%').aspectRatio(0.79)
@@ -248,8 +267,17 @@ export struct HomeView {
       }, (item: Wallpaper) => item.id)
     }
     .columnsTemplate('1fr '.repeat(this.columns).trim()).columnsGap(10).rowsGap(14)
-    .layoutWeight(1).width('100%').cachedCount(this.columns * 2)
-    .scrollBar(BarState.Off).onReachEnd(() => this.loadMore())
+    .layoutWeight(1).width('100%').contentEndOffset(this.collectionsMode || this.keyboardVisible ? 0 :
+      FLOATING_NAV_CONTENT_INSET).cachedCount(this.columns * 2)
+    .onTouch((event: TouchEvent) => {
+      if (event.type === TouchType.Down) this.navScroll.start(this.gridScroller.currentOffset().yOffset);
+      else if (event.type === TouchType.Cancel) this.navScroll.stop();
+    })
+    .onDidScroll(() => this.updateNavigation()).onScrollStop(() => this.navScroll.stop())
+    .scrollBar(BarState.Off).onReachEnd(() => {
+      if (this.page >= this.lastPage || this.errorText.length > 0) this.onNavHidden(false);
+      this.loadMore();
+    })
     if (this.errorText.length > 0) {
       Row({ space: 12 }) {
         Text(this.errorText).fontSize(13).fontColor($r('app.color.error')).layoutWeight(1)
@@ -286,7 +314,11 @@ export struct HomeView {
 
   build() {
     Column({ space: 8 }) {
-      MainTitle({ title: this.collectionsMode ? '我的收藏' : '图库', onSettings: () => this.onSettings() })
+      if (this.collectionsMode) {
+        BackButton({ label: 'Wallhaven 收藏集', onBack: () => this.onBack() })
+      } else {
+        MainTitle({ title: '图库', onSettings: () => this.onSettings() })
+      }
       if (!this.collectionsMode) {
         Search({ value: this.query, placeholder: '搜索壁纸' })
           .height(44).margin(0).backgroundColor($r('app.color.control_fill')).fontColor($r('app.color.text'))
@@ -312,8 +344,7 @@ export struct HomeView {
           Scroll() {
             Row({ space: 8 }) {
               ForEach(GALLERY_TOPICS, (topic: GalleryTopic) => {
-                this.filterButton(topic.label, this.submittedQuery.length === 0 && this.topic === topic.id,
-                  () => this.selectTopic(topic.id))
+                this.topicButton(topic)
               }, (topic: GalleryTopic) => topic.id)
             }
           }.width('100%').scrollable(ScrollDirection.Horizontal).scrollBar(BarState.Off)
@@ -330,7 +361,7 @@ export struct HomeView {
         }
       } else if (this.selectedCollection) {
         Row({ space: 8 }) {
-          BackButton({ label: '我的收藏', onBack: () => {
+          BackButton({ label: '收藏集', onBack: () => {
             this.selectedCollection = undefined;
             this.reload();
           } })

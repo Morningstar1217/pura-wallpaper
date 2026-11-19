@@ -29,6 +29,12 @@ function setup() {
     resourceManager: { getConfigurationSync() { return { colorMode: state.resourceColorMode ?? light }; } }
   };
   const mainWindow = {
+    on(event, callback) { assert.equal(event, 'keyboardHeightChange'); state.keyboardListener = callback; },
+    off(event, callback) {
+      assert.equal(event, 'keyboardHeightChange');
+      assert.equal(callback, state.keyboardListener);
+      state.keyboardListener = undefined;
+    },
     setImmersiveModeEnabledState(enabled) { state.calls.push(['immersive', enabled]); },
     setWindowSystemBarProperties(properties) {
       state.calls.push(['appearance', properties]);
@@ -104,6 +110,20 @@ test('theme changes update colors without enabling bar animations or changing vi
   ability.onWindowStageDestroy();
   ability.onConfigurationUpdate({ colorMode: light });
   assert.equal(state.calls.length, 1);
+});
+
+test('keyboard visibility follows the native window and clears on stage destruction', async () => {
+  const { ability, stage } = setup();
+  await ability.onWindowStageCreate(stage);
+  assert.equal(AppStorage.get('keyboardVisible'), false);
+  state.keyboardListener(360);
+  assert.equal(AppStorage.get('keyboardVisible'), true);
+  state.keyboardListener(0);
+  assert.equal(AppStorage.get('keyboardVisible'), false);
+  state.keyboardListener(360);
+  ability.onWindowStageDestroy();
+  assert.equal(state.keyboardListener, undefined);
+  assert.equal(AppStorage.get('keyboardVisible'), false);
 });
 
 test('window service failure still loads application content', async context => {

@@ -126,7 +126,7 @@ export function isOfficialImage(url: string): boolean {
 }
 
 export function isGallery360Image(url: string): boolean {
-  return /^https:\/\/cdn-hsyq-static\.shanhutech\.cn\/bizhi\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]+\.(?:jpe?g|png|webp)$/i.test(url);
+  return /^https:\/\/cdn-hsyq-static(?:-bak)?\.shanhutech\.cn\/(?:bizhi|a)\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]+\.(?:jpe?g|png|webp)$/i.test(url);
 }
 
 export function isBingDailyImage(url: string): boolean {

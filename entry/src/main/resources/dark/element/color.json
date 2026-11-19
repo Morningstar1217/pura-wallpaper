@@ -37,6 +37,18 @@
       "value": "#333333"
     },
     {
+      "name": "nav_glass",
+      "value": "#C42D3032"
+    },
+    {
+      "name": "nav_rim",
+      "value": "#55FFFFFF"
+    },
+    {
+      "name": "nav_selected",
+      "value": "#484DA89E"
+    },
+    {
       "name": "error",
       "value": "#FFB4AB"
     }

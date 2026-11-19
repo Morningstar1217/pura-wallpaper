@@ -1,6 +1,61 @@
 import { Wallpaper } from '../core/Wallpaper';
 import { BingDailyService } from '../services/BingDailyService';
 import { MainTitle } from './MainTitle';
+import { dailyDate } from '../core/BingDaily';
+import { FLOATING_NAV_CONTENT_INSET } from '../core/FloatingNavigation';
+
+@Component
+struct DailyCard {
+  @Require @Prop item: Wallpaper;
+  onOpen: (item: Wallpaper) => void = () => {};
+  @State private imageIndex: number = 0;
+  @State private imageReady: boolean = false;
+  @State private imageFailed: boolean = false;
+
+  build() {
+    Stack({ alignContent: Alignment.BottomStart }) {
+      if (!this.imageFailed) {
+        Image(this.imageIndex === 0 ? this.item.path : this.item.fallbackPath)
+          .width('100%').height('100%').objectFit(ImageFit.Cover).accessibilityLevel('no')
+          .onComplete((event) => {
+            if (event?.loadingStatus === 1) this.imageReady = true;
+          })
+          .onError(() => {
+            this.imageReady = false;
+            if (this.imageIndex === 0 && this.item.fallbackPath) this.imageIndex = 1;
+            else this.imageFailed = true;
+          })
+      }
+      Column({ space: 5 }) {
+        Text(this.item.title ?? '必应每日壁纸').fontSize(25).fontWeight(FontWeight.Bold).fontColor(Color.White)
+          .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
+        Text('必应每日壁纸 · ' + dailyDate(this.item.id)).fontSize(14).fontColor('#F5F5F5')
+        if (this.item.attribution) {
+          Text(this.item.attribution).fontSize(12).fontColor('#EEEEEE').maxLines(2)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+        }
+      }.width('100%').alignItems(HorizontalAlign.Start).padding({ left: 18, right: 18, top: 36, bottom: 17 })
+        .linearGradient({ direction: GradientDirection.Bottom, colors: [[Color.Transparent, 0], ['#D9000000', 1]] })
+      if (!this.imageReady) {
+        Column({ space: 10 }) {
+          if (this.imageFailed) {
+            Text('这张壁纸暂时无法加载').fontColor(Color.White).fontSize(14)
+            Button('重试').onClick(() => {
+              this.imageIndex = 0;
+              this.imageFailed = false;
+            })
+          } else {
+            LoadingProgress().width(30).height(30).color(Color.White)
+          }
+        }.width('100%').height('100%').justifyContent(FlexAlign.Center)
+      }
+    }.width('100%').height('100%').borderRadius(20).clip(true).backgroundColor('#354C55')
+      .accessibilityText('每日推荐：' + (this.item.title ?? '必应每日壁纸'))
+      .focusable(this.imageReady).onClick(() => {
+        if (this.imageReady) this.onOpen(this.item);
+      })
+  }
+}
 
 @Component
 export struct DailyView {
@@ -9,12 +64,10 @@ export struct DailyView {
   onSettings: () => void = () => {};
   onGallery: () => void = () => {};
   onOpen: (item: Wallpaper) => void = () => {};
-  @State private daily?: Wallpaper = undefined;
+  @State private daily: Wallpaper[] = [];
+  @State private current: number = 0;
   @State private loading: boolean = false;
   @State private failed: boolean = false;
-  @State private imageIndex: number = 0;
-  @State private imageReady: boolean = false;
-  @State private imageFailed: boolean = false;
   private service: BingDailyService = new BingDailyService();
   private lastChecked: number = 0;
   private generation: number = 0;
@@ -34,7 +87,7 @@ export struct DailyView {
 
   private refreshIfActive(): void {
     if (!this.mounted || !this.active || this.loading) return;
-    if (!this.daily || Date.now() - this.lastChecked >= 15 * 60 * 1000) this.load();
+    if (this.daily.length === 0 || Date.now() - this.lastChecked >= 15 * 60 * 1000) this.load();
   }
 
   private async load(): Promise<void> {
@@ -46,65 +99,36 @@ export struct DailyView {
       const daily = await this.service.load();
       if (generation !== this.generation) return;
       this.lastChecked = Date.now();
-      if (this.daily?.path !== daily.path || this.imageFailed) {
-        this.imageIndex = 0;
-        this.imageReady = false;
-        this.imageFailed = false;
-        this.daily = daily;
-      }
+      const previous = this.current === 0 ? '' : this.daily[this.current]?.id;
+      this.daily = daily;
+      this.current = Math.max(0, daily.findIndex((item: Wallpaper) => item.id === previous));
     } catch {
-      if (generation === this.generation && !this.daily) this.failed = true;
+      if (generation === this.generation && this.daily.length === 0) this.failed = true;
     } finally {
       if (generation === this.generation) this.loading = false;
     }
   }
 
-  private openDaily(): void {
-    if (this.daily && this.imageReady) this.onOpen(this.daily);
-  }
-
-  @Builder
-  private dailyCard(item: Wallpaper) {
-    Stack({ alignContent: Alignment.BottomStart }) {
-      Image(this.imageIndex === 0 ? item.path : item.fallbackPath)
-        .width('100%').height('100%').objectFit(ImageFit.Cover).accessibilityLevel('no')
-        .onComplete((event) => {
-          if (event?.loadingStatus === 1) this.imageReady = true;
-        })
-        .onError(() => {
-          this.imageReady = false;
-          if (this.imageIndex === 0 && item.fallbackPath) this.imageIndex = 1;
-          else this.imageFailed = true;
-        })
-      Column({ space: 5 }) {
-        Text(item.title ?? '必应每日壁纸').fontSize(25).fontWeight(FontWeight.Bold).fontColor(Color.White)
-          .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
-        Text('必应每日壁纸').fontSize(14).fontColor('#F5F5F5')
-        if (item.attribution) {
-          Text(item.attribution).fontSize(12).fontColor('#EEEEEE').maxLines(2)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-        }
-      }.width('100%').alignItems(HorizontalAlign.Start).padding({ left: 18, right: 18, top: 36, bottom: 17 })
-        .linearGradient({ direction: GradientDirection.Bottom, colors: [[Color.Transparent, 0], ['#D9000000', 1]] })
-      if (!this.imageReady) {
-        Column() {
-          LoadingProgress().width(32).height(32).color(Color.White)
-        }.width('100%').height('100%').justifyContent(FlexAlign.Center)
-      }
-    }.width('100%').layoutWeight(1).borderRadius(20).clip(true).backgroundColor('#354C55')
-      .accessibilityGroup(true).accessibilityText('预览每日推荐：' + (item.title ?? '必应每日壁纸'))
-      .focusable(this.imageReady).onClick(() => this.openDaily())
-  }
-
   build() {
     Column({ space: 12 }) {
       MainTitle({ title: '映壁', onSettings: () => this.onSettings() })
-      Text('每日推荐').width('100%').fontSize(21).fontWeight(FontWeight.Bold).fontColor($r('app.color.text'))
-      if (this.daily && !this.imageFailed) {
-        this.dailyCard(this.daily)
+      Row() {
+        Text('每日推荐').fontSize(21).fontWeight(FontWeight.Bold).fontColor($r('app.color.text'))
+        Blank()
+        if (this.daily.length > 1) {
+          Text((this.current + 1) + ' / ' + this.daily.length).fontSize(13).fontColor($r('app.color.muted'))
+        }
+      }.width('100%')
+      if (this.daily.length > 0) {
+        Swiper() {
+          ForEach(this.daily, (item: Wallpaper) => {
+            DailyCard({ item: item, onOpen: (wallpaper: Wallpaper) => this.onOpen(wallpaper) })
+          }, (item: Wallpaper) => item.id + item.path)
+        }.layoutWeight(1).width('100%').loop(false).cachedCount(1).index(this.current)
+          .indicator(false).onChange((index: number) => this.current = index)
       } else {
         Column({ space: 12 }) {
-          if (this.loading || (!this.failed && !this.imageFailed)) {
+          if (this.loading || !this.failed) {
             LoadingProgress().width(32).height(32).color($r('app.color.accent'))
             Text('正在加载每日壁纸').fontSize(14).fontColor($r('app.color.muted'))
           } else {
@@ -127,6 +151,6 @@ export struct DailyView {
       }.width('100%').height(46).padding({ left: 16, right: 16 }).borderRadius(14)
         .backgroundColor($r('app.color.control_fill')).onClick(() => this.onGallery())
     }.width('100%').height('100%').constraintSize({ maxWidth: 600 })
-      .padding({ left: 16, right: 16, top: 4, bottom: 12 })
+      .padding({ left: 16, right: 16, top: 4, bottom: FLOATING_NAV_CONTENT_INSET })
   }
 }

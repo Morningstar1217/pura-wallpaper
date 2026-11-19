@@ -4,7 +4,7 @@ import { moduleUrl } from './source-loader.mjs';
 
 const coreUrl = moduleUrl('entry/src/main/ets/core/Wallpaper.ets');
 const bingUrl = moduleUrl('entry/src/main/ets/core/BingDaily.ets', [['./Wallpaper', coreUrl]]);
-const { normalizeBingDaily } = await import(bingUrl);
+const { normalizeBingDaily, dailyDate } = await import(bingUrl);
 const { isBingDailyImage } = await import(coreUrl);
 const daily = {
   startdate: '20261118', urlbase: '/th?id=OHR.KnowledgeSculpture_ZH-CN3168800853',
@@ -12,7 +12,7 @@ const daily = {
 };
 
 test('daily recommendation keeps the Bing date, title, attribution and paired image variants', () => {
-  const item = normalizeBingDaily({ images: [daily, { ...daily, startdate: '20261117' }] });
+  const [item] = normalizeBingDaily({ images: [daily, { ...daily, startdate: '20261117' }] });
   assert.equal(item.id, 'bing-20261118');
   assert.equal(item.title, daily.title);
   assert.equal(item.attribution, daily.copyright);
@@ -20,7 +20,16 @@ test('daily recommendation keeps the Bing date, title, attribution and paired im
   assert.match(item.fallbackPath, /_1920x1080\.jpg&pid=hp$/);
   assert.ok(isBingDailyImage(item.path));
   assert.ok(isBingDailyImage(item.fallbackPath));
-  assert.equal(normalizeBingDaily({ images: [{ ...daily, title: '' }] }).title, '必应每日壁纸');
+  assert.equal(normalizeBingDaily({ images: [{ ...daily, title: '' }] })[0].title, '必应每日壁纸');
+  assert.equal(dailyDate(item.id), '11月18日');
+});
+
+test('daily history skips malformed and duplicate entries and caps the newest results at eight', () => {
+  const images = Array.from({ length: 10 }, (_, index) => ({ ...daily, startdate: `202611${10 + index}` }));
+  const result = normalizeBingDaily({ images: [null, ...images, images[9], { ...daily, startdate: 'oops' }] });
+  assert.equal(result.length, 8);
+  assert.equal(result[0].id, 'bing-20261119');
+  assert.equal(result.at(-1).id, 'bing-20261112');
 });
 
 test('malformed Bing metadata cannot inject another image host or URL parameters', () => {
@@ -51,8 +60,8 @@ const { BingDailyService } = await import(moduleUrl('entry/src/main/ets/services
 test('only the Bing China daily endpoint is requested, without credentials, and requests are released', async () => {
   response = { responseCode: 200, result: JSON.stringify({ images: [daily] }) };
   const service = new BingDailyService();
-  assert.equal((await service.load()).title, daily.title);
-  assert.equal(calls[0].url, 'https://cn.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1&mkt=zh-CN');
+  assert.equal((await service.load())[0].title, daily.title);
+  assert.equal(calls[0].url, 'https://cn.bing.com/HPImageArchive.aspx?format=js&idx=0&n=8&mkt=zh-CN');
   assert.deepEqual(calls[0].options.header, { Accept: 'application/json' });
   assert.equal(calls[0].destroyed, 1);
   response = { responseCode: 503 };

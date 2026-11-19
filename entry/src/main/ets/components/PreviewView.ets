@@ -13,6 +13,10 @@ export struct PreviewView {
   @Require @Prop @Watch('onDeviceProfileChanged') deviceProfile: DeviceProfile;
   onBack: () => void = () => {};
   onBusy: (busy: boolean) => void = () => {};
+  @Prop favorite: boolean = false;
+  @Prop favoritesAvailable: boolean = false;
+  onFavorite: (item: Wallpaper, data?: ArrayBuffer) => void = () => {};
+  readLocal: (id: string) => Promise<ArrayBuffer> = async () => new ArrayBuffer(0);
   @State private pixels: image.PixelMap | undefined = undefined;
   @State private loading: boolean = true;
   @State private exporting: boolean = false;
@@ -32,6 +36,7 @@ export struct PreviewView {
   @State private fullscreenTopInset: number = 0;
   private session?: WallpaperImage;
   private prepared?: ArrayBuffer;
+  private original?: ArrayBuffer;
   private service: WallhavenService = new WallhavenService();
   private active: boolean = false;
   private generation: number = 0;
@@ -52,6 +57,7 @@ export struct PreviewView {
     this.generation++;
     this.service.cancel();
     this.prepared = undefined;
+    this.original = undefined;
     this.pixels = undefined;
     if (!this.exporting) this.releaseSession();
   }
@@ -70,7 +76,8 @@ export struct PreviewView {
     this.errorText = '';
     const session = new WallpaperImage();
     try {
-      const data = await this.service.image(this.wallpaper.path, this.wallpaper.fallbackPath);
+      const data = this.favorite ? await this.readLocal(this.wallpaper.id) :
+        await this.service.image(this.wallpaper.path, this.wallpaper.fallbackPath);
       if (!this.active || generation !== this.generation) return;
       await session.load(data);
       if (!this.active || generation !== this.generation) {
@@ -78,6 +85,7 @@ export struct PreviewView {
         return;
       }
       this.session = session;
+      this.original = data;
       this.pixels = session.preview;
     } catch {
       if (this.active && generation === this.generation) {
@@ -359,6 +367,14 @@ export struct PreviewView {
           Text(this.session ? this.session.width + 'x' + this.session.height : this.wallpaper.resolution)
             .fontSize(13).fontColor($r('app.color.muted'))
           Text('#' + this.wallpaper.id).fontSize(13).fontColor($r('app.color.muted')).margin({ left: 12 })
+          Button({ type: ButtonType.Circle }) {
+            SymbolGlyph(this.favorite ? $r('sys.symbol.heart_fill') : $r('sys.symbol.heart'))
+              .fontSize(23).fontColor([$r('app.color.accent')]).accessibilityLevel('no')
+          }.width(44).height(44).padding(0).margin({ left: 6 }).backgroundColor(Color.Transparent)
+            .enabled(this.favoritesAvailable && (this.favorite || this.pixels !== undefined))
+            .accessibilityText(this.favorite ? '取消本机收藏' : '收藏到本机')
+            .accessibilitySelected(this.favorite)
+            .onClick(() => this.onFavorite(this.wallpaper, this.original))
         }.width('100%')
         if (this.wide) {
           Row({ space: 20 }) {

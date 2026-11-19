@@ -9,6 +9,9 @@ export default class EntryAbility extends UIAbility {
   private contentReady: boolean = false;
   private requestedColorMode?: number;
   private onDisplayChanged = (): void => this.updateDeviceProfile();
+  private onKeyboardHeight = (height: number): void => {
+    AppStorage.setOrCreate('keyboardVisible', height > 0);
+  };
 
   onCreate(): void {
     try {
@@ -30,6 +33,12 @@ export default class EntryAbility extends UIAbility {
       console.warn('Default window layout will be used');
     }
     this.updateDeviceProfile();
+    this.onKeyboardHeight(0);
+    try {
+      this.mainWindow?.on('keyboardHeightChange', this.onKeyboardHeight);
+    } catch {
+      console.warn('Keyboard listener is unavailable');
+    }
     try {
       display.on('change', this.onDisplayChanged);
     } catch {
@@ -93,6 +102,12 @@ export default class EntryAbility extends UIAbility {
   }
 
   onWindowStageDestroy(): void {
+    try {
+      this.mainWindow?.off('keyboardHeightChange', this.onKeyboardHeight);
+    } catch {
+      console.warn('Keyboard listener release failed');
+    }
+    this.onKeyboardHeight(0);
     try {
       display.off('change', this.onDisplayChanged);
     } catch {

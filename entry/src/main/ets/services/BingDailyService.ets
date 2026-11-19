@@ -5,7 +5,7 @@ import { BING_ORIGIN, BING_ARCHIVE_PATH, BingArchive, normalizeBingDaily } from 
 export class BingDailyService {
   private active?: http.HttpRequest;
 
-  async load(): Promise<Wallpaper> {
+  async load(): Promise<Wallpaper[]> {
     this.cancel();
     const request = http.createHttp();
     this.active = request;

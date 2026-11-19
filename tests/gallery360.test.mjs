@@ -44,6 +44,16 @@ test('invalid gallery URLs or pagination are rejected and empty searches remain 
   assert.deepEqual(normalizeGalleryPage({ ...payload, data: [] }, 2).data, []);
 });
 
+test('pet, minimal, car and game categories accept the upstream backup CDN and its /a/ image paths', () => {
+  for (const path of ['bizhi/staticwp/201802/dc489bd4088dfb4d268d706fa2d2b687.jpg', 'a/201911/21/5dd635d6be968.jpg']) {
+    const url = 'http://cdn-hsyq-static-bak.shanhutech.cn/' + path;
+    const response = { ...payload, data: [{ ...entry, media: { ...entry.media, image_url: url, thumbnail_url: url } }] };
+    const [item] = normalizeGalleryPage(response, 2).data;
+    assert.equal(item.path, url.replace('http:', 'https:'));
+    assert.equal(item.thumbs.large, item.path);
+  }
+});
+
 let nextResponse;
 const calls = [];
 globalThis.__galleryHttp = {
