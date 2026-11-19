@@ -5,7 +5,7 @@
 <h1 align="center">映壁 · Pura Wallpaper</h1>
 <p align="center">面向 HarmonyOS 手机的壁纸浏览、裁剪和导出工具</p>
 
-**当前版本 `1.0.10`** · ArkTS / ArkUI · HarmonyOS API 26
+**当前版本 `1.0.11`** · ArkTS / ArkUI · HarmonyOS API 26
 
 ## 功能
 

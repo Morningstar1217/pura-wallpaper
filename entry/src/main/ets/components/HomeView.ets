@@ -4,7 +4,7 @@ import { GALLERY_TOPICS, GalleryTopic } from '../core/Gallery360';
 import { WallhavenService } from '../services/WallhavenService';
 import { Gallery360Service } from '../services/Gallery360Service';
 import { GallerySource, gallerySourceLabel } from '../core/GallerySource';
-import { MainTitle } from './MainTitle';
+import { MainTitle, SettingsButton } from './MainTitle';
 import { FLOATING_NAV_CONTENT_INSET, NavigationScroll } from '../core/FloatingNavigation';
 
 @Component
@@ -310,7 +310,7 @@ export struct HomeView {
   @Builder
   private galleryFilters() {
     Column() {
-      Row({ space: 4 }) {
+      Row({ space: 2 }) {
         Scroll() {
           if (this.source === GallerySource.Gallery360) {
             Row({ space: 8 }) {
@@ -339,7 +339,8 @@ export struct HomeView {
             if (this.searchOpen) this.closeSearch();
             else this.searchOpen = true;
           })
-      }.width('100%')
+        SettingsButton({ onSettings: () => this.onSettings() })
+      }.width('100%').alignItems(VerticalAlign.Center)
       if (this.searchOpen) {
         Search({ value: this.query, placeholder: '搜索壁纸', controller: this.searchController })
           .id('gallerySearchInput').width('100%').height(44).margin({ bottom: 6 })
@@ -383,7 +384,7 @@ export struct HomeView {
       ListItemGroup() {
         ListItem() {
           Column({ space: 4 }) {
-            MainTitle({ title: '图库', onSettings: () => this.onSettings() })
+            MainTitle({ title: '图库', showSettings: false })
             Text('来源：' + gallerySourceLabel(this.source) + (this.submittedQuery.length > 0 ?
               ' · 搜索：' + this.submittedQuery : '')).width('100%').fontSize(13)
               .fontColor($r('app.color.muted')).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
