@@ -2,7 +2,7 @@ import { http } from '@kit.NetworkKit';
 import {
   API_ORIGIN, MAX_IMAGE_BYTES, WallpaperPage, CollectionList, Collection,
   SearchQuery, searchPath, collectionPath, validatePage, validateCollections,
-  isOfficialImage, httpError, validatePurity
+  isOfficialImage, isGallery360Image, isBingDailyImage, httpError, validatePurity
 } from '../core/Wallpaper';
 
 interface ApiHeaders {
@@ -36,14 +36,20 @@ export class WallhavenService {
   }
 
   async collections(): Promise<Collection[]> {
-    const body = await this.requestJson(collectionPath());
+    this.requireCollectionAccess();
+    const body = await this.requestJson('/collections');
     return validateCollections(JSON.parse(body) as CollectionList);
   }
 
-  async collection(id: number, page: number, purity?: string): Promise<WallpaperPage> {
+  async collection(username: string, id: number, page: number, purity?: string): Promise<WallpaperPage> {
+    this.requireCollectionAccess();
     this.requirePurityAccess(purity ?? '100');
-    const body = await this.requestJson(collectionPath(id, page, purity));
+    const body = await this.requestJson(collectionPath(username, id, page, purity));
     return validatePage(JSON.parse(body) as WallpaperPage, page);
+  }
+
+  private requireCollectionAccess(): void {
+    if (!this.hasToken()) throw new Error('请在设置中填写自己的 Wallhaven API Key');
   }
 
   private async requestJson(path: string): Promise<string> {
@@ -71,8 +77,16 @@ export class WallhavenService {
     }
   }
 
-  async image(url: string): Promise<ArrayBuffer> {
-    if (!isOfficialImage(url)) throw new Error('图片地址无效');
+  async image(url: string, fallback?: string): Promise<ArrayBuffer> {
+    if (!isOfficialImage(url) && !isGallery360Image(url) && !isBingDailyImage(url)) throw new Error('图片地址无效');
+    if (fallback && (!isBingDailyImage(url) || !isBingDailyImage(fallback) ||
+      url.replace('_1080x1920.jpg&pid=hp', '_1920x1080.jpg&pid=hp') !== fallback || url === fallback)) {
+      throw new Error('备用图片地址无效');
+    }
+    return this.downloadImage(url, fallback);
+  }
+
+  private async downloadImage(url: string, fallback?: string): Promise<ArrayBuffer> {
     const request = http.createHttp();
     this.active.add(request);
     try {
@@ -85,6 +99,9 @@ export class WallhavenService {
         maxLimit: MAX_IMAGE_BYTES,
         usingCache: true
       });
+      if ((response.responseCode === 404 || response.responseCode === 410) && fallback && this.active.has(request)) {
+        return this.downloadImage(fallback);
+      }
       if (response.responseCode !== 200) throw new Error(httpError(response.responseCode));
       const data = response.result as ArrayBuffer;
       if (!(data instanceof ArrayBuffer) || data.byteLength === 0 || data.byteLength > MAX_IMAGE_BYTES) {

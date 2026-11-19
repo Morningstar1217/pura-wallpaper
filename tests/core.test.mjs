@@ -18,10 +18,12 @@ test('search percent-encodes keywords and keeps SFW discovery explicit', () => {
 test('latest sorting omits toplist-only options', () => {
   assert.equal(core.searchPath({ text: '', sorting: 'date_added', page: 1 }), '/search?purity=100&categories=111&order=desc&sorting=date_added&page=1');
 });
-test('collection requests use the specified account and validate IDs', () => {
-  assert.equal(core.collectionPath(), '/collections/pangdunqing');
-  assert.equal(core.collectionPath(123, 2), '/collections/pangdunqing/123?page=2');
-  for (const id of [0, -1, 1.5, NaN]) assert.throws(() => core.collectionPath(id));
+test('collection details require an explicit safe username and valid ID', () => {
+  assert.equal(core.collectionPath('my_wallpapers', 123, 2), '/collections/my_wallpapers/123?page=2');
+  for (const id of [0, -1, 1.5, NaN]) assert.throws(() => core.collectionPath('alice', id));
+  for (const name of ['', '../alice', 'alice/bob', 'alice?x=1', 'alice%2fbob']) {
+    assert.throws(() => core.collectionPath(name, 123));
+  }
 });
 test('image origin allowlist rejects credentials, subdomain tricks and HTTP', () => {
   assert.equal(core.isOfficialImage(wallpaper.path), true);
@@ -117,28 +119,57 @@ test('API key is sent in a header, never in the API URL', async () => {
   const service = new WallhavenService();
   service.setToken('example-secret');
   await service.collections();
+  assert.equal(calls[0].url, 'https://wallhaven.cc/api/v1/collections');
   assert.equal(calls[0].options.header['X-API-Key'], 'example-secret');
   assert.ok(!calls[0].url.includes('example-secret'));
   assert.equal(calls[0].destroyed, true);
 });
+test('no collection list or details are requested as a guest', async () => {
+  calls = [];
+  const service = new WallhavenService();
+  await assert.rejects(() => service.collections(), /API Key/);
+  await assert.rejects(() => service.collection('my_wallpapers', 15, 1), /API Key/);
+  assert.equal(calls.length, 0);
+});
 test('image downloads never receive the API key', async () => {
   calls = [];
-  pending = [{ responseCode: 200, result: new ArrayBuffer(10) }];
+  pending = Array.from({ length: 2 }, () => ({ responseCode: 200, result: new ArrayBuffer(10) }));
   const service = new WallhavenService();
   service.setToken('example-secret');
   await service.image(wallpaper.path);
-  assert.equal(calls[0].options.header, undefined);
-  assert.equal(calls[0].destroyed, true);
+  await service.image('https://cdn-hsyq-static.shanhutech.cn/bizhi/staticwp/202411/example--123.jpg');
+  for (const call of calls) {
+    assert.equal(call.options.header, undefined);
+    assert.equal(call.destroyed, true);
+  }
   await assert.rejects(() => service.image('https://example.com/a.jpg'), /图片地址无效/);
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 2);
 });
 test('HTTP failures and transport failures release native requests', async () => {
   for (const response of [{ responseCode: 401 }, { responseCode: 429 }, new Error('offline')]) {
     calls = [];
     pending = [response];
-    await assert.rejects(() => new WallhavenService().collections());
+    const service = new WallhavenService();
+    service.setToken('example-secret');
+    await assert.rejects(() => service.collections());
     assert.equal(calls[0].destroyed, true);
   }
+});
+test('Bing preview uses only the paired landscape fallback when portrait is missing, without credentials', async () => {
+  calls = [];
+  const base = 'https://cn.bing.com/th?id=OHR.Test_ZH-CN123';
+  const portrait = base + '_1080x1920.jpg&pid=hp';
+  const landscape = base + '_1920x1080.jpg&pid=hp';
+  const body = new ArrayBuffer(10);
+  pending = [{ responseCode: 404 }, { responseCode: 200, result: body }];
+  const service = new WallhavenService();
+  service.setToken('example-secret');
+  assert.equal(await service.image(portrait, landscape), body);
+  assert.deepEqual(calls.map(call => call.url), [portrait, landscape]);
+  assert.ok(calls.every(call => !call.options.header && call.destroyCount === 1));
+  await assert.rejects(() => service.image(portrait, landscape.replace('Test', 'Other')), /备用图片/);
+  await assert.rejects(() => service.image(portrait, 'https://example.com/a.jpg'), /备用图片/);
+  assert.equal(calls.length, 2);
 });
 test('zero-length and oversized image bodies are rejected', async () => {
   for (const data of [new ArrayBuffer(0), new ArrayBuffer(core.MAX_IMAGE_BYTES + 1)]) {
@@ -153,6 +184,7 @@ test('cancellation and completion release the same native request only once', as
   let complete;
   pending = [new Promise(resolve => { complete = resolve; })];
   const service = new WallhavenService();
+  service.setToken('example-secret');
   const result = service.collections();
   service.cancel();
   complete({ responseCode: 200, result: JSON.stringify({ data: [] }) });
@@ -163,11 +195,11 @@ test('cancellation and completion release the same native request only once', as
 test('all seven nonempty purity combinations are encoded in search and collection pagination', () => {
   for (const purity of ['100', '010', '001', '110', '101', '011', '111']) {
     assert.ok(core.searchPath({ text: '', sorting: 'date_added', page: 3, purity }).includes('purity=' + purity));
-    assert.equal(core.collectionPath(15, 3, purity), '/collections/pangdunqing/15?page=3&purity=' + purity);
+    assert.equal(core.collectionPath('alice', 15, 3, purity), '/collections/alice/15?page=3&purity=' + purity);
   }
   for (const purity of ['000', '', '11', '1000', 'abc', '100&x=1']) {
     assert.throws(() => core.searchPath({ text: '', sorting: 'toplist', page: 1, purity }));
-    assert.throws(() => core.collectionPath(15, 1, purity));
+    assert.throws(() => core.collectionPath('alice', 15, 1, purity));
   }
 });
 test('purity toggles preserve at least one selection and use SFW Sketchy NSFW bit order', () => {
@@ -191,7 +223,7 @@ test('NSFW requests require the saved API key and carry the selected filter to a
   const service = new WallhavenService();
   assert.equal(service.hasToken(), false);
   await assert.rejects(() => service.search({ text: '', sorting: 'toplist', page: 1, purity: '001' }), /API Key/);
-  await assert.rejects(() => service.collection(15, 2, '111'), /API Key/);
+  await assert.rejects(() => service.collection('alice', 15, 2, '111'), /API Key/);
   assert.equal(calls.length, 0);
   service.setToken('example-secret');
   assert.equal(service.hasToken(), true);
@@ -200,16 +232,16 @@ test('NSFW requests require the saved API key and carry the selected filter to a
     { responseCode: 200, result: JSON.stringify({ data: [], meta: { current_page: 3, last_page: 3, total: 0 } }) }
   ];
   await service.search({ text: 'nature', sorting: 'date_added', page: 2, purity: '001' });
-  await service.collection(15, 3, '111');
+  await service.collection('alice', 15, 3, '111');
   assert.ok(calls[0].url.includes('purity=001'));
   assert.ok(calls[0].url.includes('page=2'));
-  assert.equal(calls[1].url, 'https://wallhaven.cc/api/v1/collections/pangdunqing/15?page=3&purity=111');
+  assert.equal(calls[1].url, 'https://wallhaven.cc/api/v1/collections/alice/15?page=3&purity=111');
   for (const call of calls) {
     assert.equal(call.options.header['X-API-Key'], 'example-secret');
     assert.ok(!call.url.includes('example-secret'));
   }
   service.setToken('');
-  await assert.rejects(() => service.collection(15, 1, '001'), /API Key/);
+  await assert.rejects(() => service.collection('alice', 15, 1, '001'), /API Key/);
 });
 
 test('explicit screen targets crop landscape portrait square and coprime resolutions inside source bounds', () => {

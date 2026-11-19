@@ -1,14 +1,23 @@
 import { BackButton } from './BackButton';
-import { Wallpaper, Collection, appendWallpapers, togglePurity, purityLabel } from '../core/Wallpaper';
+import { Wallpaper, WallpaperPage, Collection, appendWallpapers, togglePurity, purityLabel } from '../core/Wallpaper';
+import { GALLERY_TOPICS, GalleryTopic } from '../core/Gallery360';
 import { WallhavenService } from '../services/WallhavenService';
+import { Gallery360Service } from '../services/Gallery360Service';
+import { GallerySource, gallerySourceLabel } from '../core/GallerySource';
+import { MainTitle } from './MainTitle';
 
 @Component
 export struct HomeView {
   service: WallhavenService = new WallhavenService();
-  @Prop @Watch('onTokenChanged') tokenRevision: number = 0;
+  @Prop @Watch('onActivated') active: boolean = false;
+  @Prop @Watch('onSourceChanged') source: GallerySource = GallerySource.Gallery360;
+  @Prop collectionsMode: boolean = false;
+  @Prop @Watch('onAccountChanged') accountRevision: number = 0;
+  getUsername: () => string = () => '';
   onOpen: (wallpaper: Wallpaper) => void = () => {};
   onSettings: () => void = () => {};
-  @State private tab: string = 'discover';
+  @State private topic: string = 'all';
+  @State private username: string = '';
   @State private sorting: string = 'toplist';
   @State private purity: string = '100';
   @State private tokenAvailable: boolean = false;
@@ -20,32 +29,84 @@ export struct HomeView {
   @State private loading: boolean = false;
   @State private errorText: string = '';
   @State private columns: number = 2;
-  @State private cardWidth: number = 203;
   private page: number = 0;
   private lastPage: number = 0;
   private generation: number = 0;
   private initialized: boolean = false;
+  private needsReload: boolean = true;
+  private gallery: Gallery360Service = new Gallery360Service();
 
   aboutToAppear(): void {
     this.initialized = true;
-    this.onTokenChanged();
+    this.onAccountChanged();
+    this.onActivated();
   }
 
   aboutToDisappear(): void {
+    this.initialized = false;
+    this.needsReload = true;
     this.generation++;
+    this.gallery.cancel();
+    this.service.cancel();
   }
 
-  private onTokenChanged(): void {
+  private onAccountChanged(): void {
     this.tokenAvailable = this.service.hasToken();
+    this.username = this.getUsername();
     if (!this.tokenAvailable && this.purity.charAt(2) === '1') {
       const publicPurity = this.purity.slice(0, 2) + '0';
       this.purity = publicPurity === '000' ? '100' : publicPurity;
     }
-    if (this.initialized) this.reload();
+    this.selectedCollection = undefined;
+    if (this.collectionsMode || this.source === GallerySource.Wallhaven) this.invalidate();
+  }
+
+  private onSourceChanged(): void {
+    if (this.collectionsMode) {
+      this.selectedCollection = undefined;
+    } else {
+      this.query = '';
+      this.submittedQuery = '';
+    }
+    this.invalidate();
+  }
+
+  private onActivated(): void {
+    if (this.initialized && this.active && this.needsReload) this.reload();
+  }
+
+  private invalidate(): void {
+    if (!this.initialized) return;
+    this.needsReload = true;
+    if (!this.active) {
+      this.generation++;
+      this.gallery.cancel();
+      this.service.cancel();
+      this.wallpapers = [];
+      this.collections = [];
+      this.errorText = '';
+      this.loading = false;
+    }
+    this.onActivated();
+  }
+
+  private hasCollectionAccount(): boolean {
+    return this.source === GallerySource.Wallhaven && this.tokenAvailable && this.username.length > 0;
+  }
+
+  private fetchPage(page: number): Promise<WallpaperPage> {
+    if (this.selectedCollection) {
+      return this.service.collection(this.username, this.selectedCollection.id, page, this.purity);
+    }
+    if (this.source === GallerySource.Gallery360) return this.gallery.search(this.submittedQuery, this.topic, page);
+    return this.service.search({ text: this.submittedQuery, sorting: this.sorting, page: page, purity: this.purity });
   }
 
   private async reload(): Promise<void> {
+    this.needsReload = false;
     const generation = ++this.generation;
+    this.gallery.cancel();
+    this.service.cancel();
     this.loading = true;
     this.errorText = '';
     this.wallpapers = [];
@@ -53,13 +114,12 @@ export struct HomeView {
     this.page = 0;
     this.lastPage = 0;
     try {
-      if (this.tab === 'collections' && !this.selectedCollection) {
+      if (this.collectionsMode && !this.selectedCollection) {
+        if (!this.hasCollectionAccount()) return;
         const collections = await this.service.collections();
         if (generation === this.generation) this.collections = collections;
       } else {
-        const result = this.selectedCollection
-          ? await this.service.collection(this.selectedCollection.id, 1, this.purity)
-          : await this.service.search({ text: this.submittedQuery, sorting: this.sorting, page: 1, purity: this.purity });
+        const result = await this.fetchPage(1);
         if (generation === this.generation) {
           this.wallpapers = result.data;
           this.page = 1;
@@ -74,14 +134,13 @@ export struct HomeView {
   }
 
   private async loadMore(): Promise<void> {
-    if (this.loading || this.errorText.length > 0 || this.page < 1 || this.page >= this.lastPage) return;
+    if (!this.active || this.needsReload || this.loading || this.errorText.length > 0 || this.page < 1 ||
+      this.page >= this.lastPage) return;
     const generation = this.generation;
     const nextPage = this.page + 1;
     this.loading = true;
     try {
-      const result = this.selectedCollection
-        ? await this.service.collection(this.selectedCollection.id, nextPage, this.purity)
-        : await this.service.search({ text: this.submittedQuery, sorting: this.sorting, page: nextPage, purity: this.purity });
+      const result = await this.fetchPage(nextPage);
       if (generation === this.generation) {
         this.wallpapers = appendWallpapers(this.wallpapers, result.data);
         this.page = nextPage;
@@ -99,21 +158,21 @@ export struct HomeView {
     return '网络连接失败，请检查网络后重试';
   }
 
-  private switchTab(tab: string): void {
-    if (this.tab === tab && !this.selectedCollection) return;
-    this.tab = tab;
-    this.selectedCollection = undefined;
-    this.reload();
+  @Builder
+  private filterButton(label: string, selected: boolean, action: () => void) {
+    Button(label, { type: ButtonType.Normal })
+      .fontSize(13).height(32).padding({ left: 10, right: 10 }).borderRadius(16)
+      .backgroundColor(selected ? $r('app.color.accent') : $r('app.color.control_fill'))
+      .fontColor(selected ? $r('app.color.on_accent') : $r('app.color.text'))
+      .accessibilitySelected(selected).onClick(action)
   }
 
-  @Builder
-  private tabButton(label: string, tab: string) {
-    Button(label, { type: ButtonType.Normal })
-      .fontSize(15).fontWeight(this.tab === tab ? FontWeight.Bold : FontWeight.Regular)
-      .fontColor(this.tab === tab ? $r('app.color.text') : $r('app.color.muted'))
-      .backgroundColor(this.tab === tab ? $r('app.color.surface') : Color.Transparent)
-      .borderRadius(12).height(32).layoutWeight(1)
-      .onClick(() => this.switchTab(tab))
+  private selectTopic(topic: string): void {
+    if (this.topic === topic && this.query.length === 0 && this.submittedQuery.length === 0) return;
+    this.topic = topic;
+    this.query = '';
+    this.submittedQuery = '';
+    this.reload();
   }
 
   @Builder
@@ -156,13 +215,19 @@ export struct HomeView {
       } else if (this.errorText.length > 0) {
         Text(this.errorText).fontSize(15).fontColor($r('app.color.error')).textAlign(TextAlign.Center)
         Button('重试').onClick(() => this.reload())
-          .backgroundColor($r('app.color.accent')).fontColor($r('app.color.background'))
-      } else if (this.tab === 'collections' && !this.selectedCollection) {
-        Text('暂无可访问的收藏集').fontSize(17).fontColor($r('app.color.text'))
-        Text('私有收藏集需要填写 Wallhaven API Key')
-          .fontSize(14).fontColor($r('app.color.muted')).textAlign(TextAlign.Center)
-        Button('填写 API Key').onClick(() => this.onSettings())
-          .backgroundColor($r('app.color.accent')).fontColor($r('app.color.background'))
+          .backgroundColor($r('app.color.accent')).fontColor($r('app.color.on_accent'))
+      } else if (this.collectionsMode && !this.selectedCollection) {
+        if (this.hasCollectionAccount()) {
+          Text('你的 Wallhaven 账户暂无收藏集').fontSize(17).fontColor($r('app.color.text'))
+        } else {
+          SymbolGlyph($r('sys.symbol.heart')).fontSize(33).fontColor([$r('app.color.accent')])
+            .accessibilityLevel('no')
+          Text('还未配置我的收藏').fontSize(17).fontWeight(FontWeight.Medium).fontColor($r('app.color.text'))
+          Text('在设置里选择 Wallhaven (CC)，填写自己的账户后即可查看收藏。')
+            .fontSize(14).fontColor($r('app.color.muted')).textAlign(TextAlign.Center)
+          Button('配置 Wallhaven').onClick(() => this.onSettings())
+            .backgroundColor($r('app.color.accent')).fontColor($r('app.color.on_accent'))
+        }
       } else {
         Text('暂无壁纸').fontSize(17).fontColor($r('app.color.text'))
       }
@@ -174,18 +239,10 @@ export struct HomeView {
     WaterFlow() {
       ForEach(this.wallpapers, (item: Wallpaper) => {
         FlowItem() {
-          Column({ space: 6 }) {
-            Image(item.thumbs.large).width(this.cardWidth).aspectRatio(1.7)
-              .objectFit(ImageFit.Cover).borderRadius(12)
-              .backgroundColor($r('app.color.line')).alt('Wallhaven 壁纸 ' + item.id)
-            Row() {
-              Text(item.resolution).fontSize(11).fontColor($r('app.color.muted'))
-                .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1)
-              Text(purityLabel(item.purity)).fontSize(11).fontColor($r('app.color.muted')).margin({ right: 6 })
-              Text('#' + item.id).fontSize(11).fontColor($r('app.color.muted'))
-            }.width(this.cardWidth).padding({ left: 3, right: 3 })
-          }.width(this.cardWidth)
-        }.width(this.cardWidth).clip(true).onClick(() => this.onOpen(item))
+          Image(item.thumbs.large).width('100%').aspectRatio(0.79)
+            .objectFit(ImageFit.Cover).borderRadius(14).backgroundColor($r('app.color.control_fill'))
+            .accessibilityLevel('no')
+        }.width('100%').clip(true).focusable(true).onClick(() => this.onOpen(item))
         .accessibilityText('预览壁纸 ' + item.id + '，' + item.resolution +
           (item.purity === undefined ? '' : '，' + purityLabel(item.purity)))
       }, (item: Wallpaper) => item.id)
@@ -229,42 +286,51 @@ export struct HomeView {
 
   build() {
     Column({ space: 8 }) {
-      Row({ space: 12 }) {
-        Text('映壁').fontSize(22).fontWeight(FontWeight.Bold).fontColor($r('app.color.text'))
-        Blank()
-        Row({ space: 2 }) {
-          this.tabButton('发现', 'discover')
-          this.tabButton('收藏集', 'collections')
-        }.width(168).height(36).padding(2)
-          .backgroundColor($r('app.color.line')).borderRadius(14)
-        Button({ type: ButtonType.Circle }) {
-          SymbolGlyph($r('sys.symbol.gearshape')).fontSize(22)
-            .fontWeight(FontWeight.Normal).fontColor([$r('app.color.accent')]).accessibilityLevel('no')
-        }.height(44).width(44).padding(0).backgroundColor(Color.Transparent)
-          .accessibilityText('设置').id('settingsButton')
-          .onClick(() => this.onSettings())
-      }.width('100%').height(44)
-      if (this.tab === 'discover') {
-        Search({ value: this.query, placeholder: '搜索 Wallhaven 壁纸' })
-          .height(40).margin(0).backgroundColor($r('app.color.surface')).fontColor($r('app.color.text'))
-          .onChange((value: string) => this.query = value)
-          .onSubmit(() => {
-            this.submittedQuery = this.query.trim();
+      MainTitle({ title: this.collectionsMode ? '我的收藏' : '图库', onSettings: () => this.onSettings() })
+      if (!this.collectionsMode) {
+        Search({ value: this.query, placeholder: '搜索壁纸' })
+          .height(44).margin(0).backgroundColor($r('app.color.control_fill')).fontColor($r('app.color.text'))
+          .placeholderColor($r('app.color.muted'))
+          .onChange((value: string) => {
+            this.query = value;
+            if (value.length === 0 && this.submittedQuery.length > 0) {
+              this.submittedQuery = '';
+              this.reload();
+            }
+          })
+          .onSubmit((value: string) => {
+            this.submittedQuery = value.trim();
             this.reload();
           })
         Row({ space: 4 }) {
-          this.sortButton('热门', 'toplist')
-          this.sortButton('最新', 'date_added')
-          Blank()
-          this.purityButton('SFW', 0)
-          this.purityButton('Sketchy', 1)
-          this.purityButton('NSFW', 2)
-          Button('刷新').fontSize(13).height(32).backgroundColor(Color.Transparent)
-            .fontColor($r('app.color.muted')).onClick(() => this.reload())
-        }.width('100%')
+          Text('来源：' + gallerySourceLabel(this.source)).fontSize(13).fontColor($r('app.color.muted'))
+          if (this.source === GallerySource.Gallery360 && this.submittedQuery.length > 0) {
+            Text('· 全库搜索').fontSize(12).fontColor($r('app.color.muted'))
+          }
+        }.width('100%').margin({ top: 3, bottom: 2 })
+        if (this.source === GallerySource.Gallery360) {
+          Scroll() {
+            Row({ space: 8 }) {
+              ForEach(GALLERY_TOPICS, (topic: GalleryTopic) => {
+                this.filterButton(topic.label, this.submittedQuery.length === 0 && this.topic === topic.id,
+                  () => this.selectTopic(topic.id))
+              }, (topic: GalleryTopic) => topic.id)
+            }
+          }.width('100%').scrollable(ScrollDirection.Horizontal).scrollBar(BarState.Off)
+        } else {
+          Scroll() {
+            Row({ space: 5 }) {
+              this.sortButton('热门', 'toplist')
+              this.sortButton('最新', 'date_added')
+              this.purityButton('SFW', 0)
+              this.purityButton('Sketchy', 1)
+              this.purityButton('NSFW', 2)
+            }
+          }.width('100%').scrollable(ScrollDirection.Horizontal).scrollBar(BarState.Off)
+        }
       } else if (this.selectedCollection) {
         Row({ space: 8 }) {
-          BackButton({ label: '收藏集', onBack: () => {
+          BackButton({ label: '我的收藏', onBack: () => {
             this.selectedCollection = undefined;
             this.reload();
           } })
@@ -277,10 +343,10 @@ export struct HomeView {
           Button('刷新').height(36).backgroundColor(Color.Transparent)
             .fontColor($r('app.color.muted')).onClick(() => this.reload())
         }.width('100%')
-      } else {
+      } else if (this.hasCollectionAccount()) {
         Row() {
-          Text('pangdunqing').fontSize(14).fontColor($r('app.color.text')).fontWeight(FontWeight.Medium)
-          Blank()
+          Text('Wallhaven · ' + this.username).fontSize(14).layoutWeight(1).maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis }).fontColor($r('app.color.text')).fontWeight(FontWeight.Medium)
           Button('刷新').height(36).backgroundColor(Color.Transparent)
             .fontColor($r('app.color.muted')).onClick(() => this.reload())
         }.width('100%')
@@ -292,12 +358,11 @@ export struct HomeView {
       } else {
         this.emptyState()
       }
-    }.width('100%').height('100%').padding({ left: 12, right: 12, top: 4, bottom: 0 })
+    }.width('100%').height('100%').padding({ left: 16, right: 16, top: 4, bottom: 4 })
     .backgroundColor($r('app.color.background'))
     .onAreaChange((_old: Area, area: Area) => {
       const width = Number(area.width);
       this.columns = width >= 840 ? 4 : width >= 600 ? 3 : width < 300 ? 1 : 2;
-      this.cardWidth = Math.max(1, (width - 24 - (this.columns - 1) * 10) / this.columns);
     })
   }
 }

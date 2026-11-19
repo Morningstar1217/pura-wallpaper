@@ -1,5 +1,4 @@
 export const API_ORIGIN: string = 'https://wallhaven.cc/api/v1';
-export const OWNER: string = 'pangdunqing';
 export const TARGET_WIDTH: number = 1320;
 export const TARGET_HEIGHT: number = 2120;
 export const MAX_IMAGE_BYTES: number = 32 * 1024 * 1024;
@@ -23,6 +22,9 @@ export interface Wallpaper {
   file_size: number;
   file_type: string;
   purity?: string;
+  title?: string;
+  attribution?: string;
+  fallbackPath?: string;
 }
 
 export interface Thumbnails {
@@ -108,16 +110,27 @@ export function searchPath(query: SearchQuery): string {
   return path;
 }
 
-export function collectionPath(id?: number, page: number = 1, purity?: string): string {
-  const base = '/collections/' + OWNER;
-  if (id === undefined) return base;
+export function validWallhavenUsername(username: string): boolean {
+  return /^[a-zA-Z0-9_-]{1,32}$/.test(username);
+}
+
+export function collectionPath(username: string, id: number, page: number = 1, purity?: string): string {
+  if (!validWallhavenUsername(username)) throw new Error('请在设置中填写自己的 Wallhaven 用户名');
   if (!Number.isSafeInteger(id) || id < 1) throw new Error('收藏集编号无效');
   const filter = purity === undefined ? '' : '&purity=' + validatePurity(purity);
-  return base + '/' + id + '?page=' + Math.max(1, Math.floor(page)) + filter;
+  return '/collections/' + username + '/' + id + '?page=' + Math.max(1, Math.floor(page)) + filter;
 }
 
 export function isOfficialImage(url: string): boolean {
   return /^https:\/\/(w|th)\.wallhaven\.cc\/[a-zA-Z0-9_./%-]+$/.test(url);
+}
+
+export function isGallery360Image(url: string): boolean {
+  return /^https:\/\/cdn-hsyq-static\.shanhutech\.cn\/bizhi\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]+\.(?:jpe?g|png|webp)$/i.test(url);
+}
+
+export function isBingDailyImage(url: string): boolean {
+  return /^https:\/\/cn\.bing\.com\/th\?id=OHR\.[A-Za-z0-9_.-]{1,180}_(1080x1920|1920x1080)\.jpg&pid=hp$/.test(url);
 }
 
 export function validatePage(page: WallpaperPage, expectedPage: number): WallpaperPage {

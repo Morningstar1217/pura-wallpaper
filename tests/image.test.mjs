@@ -125,7 +125,7 @@ test('gallery asset and prepared bytes are submitted in one native change reques
   assert.deepEqual(state.steps, ['create', 'bytes', 'apply', 'release']);
   assert.equal(state.data, bytes);
   assert.equal(state.extension, 'jpg');
-  assert.match(state.title, /^Wallhaven-abc123-\d+$/);
+  assert.match(state.title, /^PuraWallpaper-abc123-\d+$/);
 });
 test('gallery failures propagate and release the helper', async () => {
   reset();

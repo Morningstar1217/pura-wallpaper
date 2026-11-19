@@ -3,14 +3,16 @@
 </p>
 
 <h1 align="center">映壁 · Pura Wallpaper</h1>
-<p align="center">面向 HarmonyOS 手机的 Wallhaven 壁纸浏览、裁剪和导出工具</p>
+<p align="center">面向 HarmonyOS 手机的壁纸浏览、裁剪和导出工具</p>
 
 **当前版本 `1.0.9`** · ArkTS / ArkUI · HarmonyOS API 26
 
 ## 功能
 
-- 浏览 Wallhaven 热门和最新壁纸，支持关键词搜索、分页和 SFW、Sketchy、NSFW 多选筛选。默认仅选中 SFW，NSFW 需要有效的 API Key。
-- 浏览 `pangdunqing` 的公开收藏集，以及当前 API Key 有权访问的私有收藏集。
+- **发现**只展示必应中国的每日推荐，可打开图片预览裁剪，不参与图库分类或搜索。
+- **图库**默认使用 360 壁纸，无需注册或 API Key。支持风景、动漫、萌宠等分类、中文关键词全库搜索和分页；关键词搜索与分类浏览是独立模式。
+- 在**设置**中可切换至 Wallhaven (CC)。应用会记住选择，仅在选中 Wallhaven 时显示可选的账户设置。Wallhaven 保留热门、最新、关键词搜索及分级筛选。
+- 使用 Wallhaven 时，**我的收藏**只列出自己配置的 API Key 所属账户的收藏集；收藏详情使用用户填写的同一账户用户名。未配置时不请求任何人的收藏集。
 - 查看原图，通过拖动、双指缩放或滑块调整选区，点击裁剪图可全屏预览。
 - 自动识别机型和当前活动屏幕的物理像素尺寸，将裁剪结果导出为相应尺寸的 JPEG。
 - 通过系统保存按钮将图片写入图库，随后可在图库中将图片设为桌面或锁屏壁纸。
@@ -52,12 +54,12 @@ export DEVECO_HOME="/Applications/DevEco-Studio.app/Contents"
 
 ## 使用
 
-1. 在 **发现** 中浏览壁纸或输入关键词搜索。
-2. 如需查看有权限的私有收藏或启用 NSFW，在 [Wallhaven 账户设置](https://wallhaven.cc/settings/account) 获取 API Key，通过首页右上角的齿轮进入设置并保存。
+1. 从 **发现** 看每日推荐，或点击 **浏览壁纸库** 进入图库。在图库点分类或输入关键词；点分类可退出 360 全库搜索。
+2. 右上角齿轮可切换图库来源。选择 **Wallhaven (CC)** 后，若要查看收藏，请在 [Wallhaven 账户设置](https://wallhaven.cc/settings/account) 获取 API Key，并填写同一账户的用户名。仅启用 NSFW 时，可只填 API Key。
 3. 打开壁纸并调整裁剪范围，点击裁剪图检查全屏效果。
 4. 点击 **生成壁纸**，再用系统 **保存图片** 按钮写入图库。在图库中打开图片即可设置壁纸。
 
-API Key 通过系统 AssetStoreKit 保存，仅用于 Wallhaven API 的 `X-API-Key` 请求头。图片 CDN 请求不携带凭据。在应用设置中留空保存可删除已保存的 Key。
+图库来源保存在 HarmonyOS ArkData 用户首选项中。用户名和 API Key 通过系统 AssetStoreKit 保存；切换来源不会删除凭据。Key 仅用于 Wallhaven API 的 `X-API-Key` 请求头，不会发给必应、360 或图片 CDN。将 Key 留空并保存可清除账户配置。
 
 ## 源码结构
 
@@ -67,7 +69,7 @@ API Key 通过系统 AssetStoreKit 保存，仅用于 Wallhaven API 的 `X-API-K
 | [`entry/src/main/ets/pages/`](entry/src/main/ets/pages/) | 页面入口及状态 |
 | [`entry/src/main/ets/components/`](entry/src/main/ets/components/) | 发现、预览裁剪和设置界面 |
 | [`entry/src/main/ets/core/`](entry/src/main/ets/core/) | API 数据校验和裁剪几何 |
-| [`entry/src/main/ets/services/`](entry/src/main/ets/services/) | Wallhaven 请求、设备信息、凭据及图片处理 |
+| [`entry/src/main/ets/services/`](entry/src/main/ets/services/) | 壁纸源请求、设备信息、凭据及图片处理 |
 | [`tests/`](tests/) | 数据、裁剪、图片处理、设备与窗口测试 |
 
 ## 自动测试
@@ -91,10 +93,12 @@ export DEVECO_HOME="/Applications/DevEco-Studio.app/Contents"
 "$DEVECO_HOME/tools/node/bin/node" --test tests/*.test.mjs
 ```
 
-40 项自动测试通过。图片与窗口测试使用平台模拟接口。历史真机验收在 Pura X（VDE-AL00）上进行，验证了主屏 `1320 × 2120` 导出、裁剪预览和深浅色切换。测试范围及设备记录见 [验收报告](docs/testing/2026-11-17-pura-wallpaper-test-report.md)。
+图片与窗口测试使用平台模拟接口。历史真机验收在 Pura X（VDE-AL00）上进行，验证了主屏 `1320 × 2120` 导出、裁剪预览和深浅色切换。测试范围及设备记录见 [验收报告](docs/testing/2026-11-17-pura-wallpaper-test-report.md)。
 
 ## 数据来源与授权
 
-壁纸来自 Wallhaven，图片版权归各自作者。使用、分享或再分发图片时请遵守对应授权。[Wallhaven API 文档](https://wallhaven.cc/help/api)
+- 每日推荐来自必应中国，显示来源和图片版权说明，优先使用竖版，没有竖版时回退到横版，图库可独立使用。
+- 默认 360 数据来自[闲言壁纸图库 API](https://doc.xianyan.cc/ext/wallpaper/)，图片通过上游图床 HTTPS 直连。这是第三方接口，不保证所有网络环境都可用。
+- 可选来源为 [Wallhaven API](https://wallhaven.cc/help/api)。免费访问不代表图片可商用或再分发；使用图片请遵守各自授权。
 
 当前源码包未附带项目许可证。

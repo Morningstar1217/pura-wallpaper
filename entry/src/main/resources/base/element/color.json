@@ -2,7 +2,7 @@
   "color": [
     {
       "name": "background",
-      "value": "#F2F2F2"
+      "value": "#F6F7F9"
     },
     {
       "name": "surface",
@@ -18,11 +18,23 @@
     },
     {
       "name": "accent",
-      "value": "#333333"
+      "value": "#087E76"
+    },
+    {
+      "name": "on_accent",
+      "value": "#FFFFFF"
+    },
+    {
+      "name": "accent_panel",
+      "value": "#DCEFEB"
+    },
+    {
+      "name": "control_fill",
+      "value": "#EBEEF1"
     },
     {
       "name": "line",
-      "value": "#E3E3E3"
+      "value": "#DEE2E6"
     },
     {
       "name": "error",

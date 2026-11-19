@@ -75,7 +75,7 @@ export async function saveToGallery(context: common.UIAbilityContext, data: Arra
     // Submit bytes together with asset creation under SaveButton temporary access.
     const request = photoAccessHelper.MediaAssetChangeRequest.createAssetRequest(
       context, photoAccessHelper.PhotoType.IMAGE, 'jpg', {
-        title: 'Wallhaven-' + id + '-' + Date.now()
+        title: 'PuraWallpaper-' + id + '-' + Date.now()
       }
     );
     request.addResource(photoAccessHelper.ResourceType.IMAGE_RESOURCE, data);

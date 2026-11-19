@@ -52,6 +52,7 @@ export default class EntryAbility extends UIAbility {
     if (!this.contentReady) return;
     this.updateDeviceProfile();
     this.updateSystemBars(this.context.config);
+    AppStorage.setOrCreate('foregroundRevision', (AppStorage.get<number>('foregroundRevision') ?? 0) + 1);
   }
 
   private updateDeviceProfile(): void {

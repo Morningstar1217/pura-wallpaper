@@ -70,7 +70,7 @@ export struct PreviewView {
     this.errorText = '';
     const session = new WallpaperImage();
     try {
-      const data = await this.service.image(this.wallpaper.path);
+      const data = await this.service.image(this.wallpaper.path, this.wallpaper.fallbackPath);
       if (!this.active || generation !== this.generation) return;
       await session.load(data);
       if (!this.active || generation !== this.generation) {
@@ -217,7 +217,7 @@ export struct PreviewView {
       } else {
         Column({ space: 16 }) {
           Text(this.errorText).fontSize(14).fontColor($r('app.color.error')).textAlign(TextAlign.Center)
-          Button('重新加载').backgroundColor($r('app.color.accent')).fontColor($r('app.color.background'))
+          Button('重新加载').backgroundColor($r('app.color.accent')).fontColor($r('app.color.on_accent'))
             .onClick(() => this.load())
         }.padding(24)
       }
@@ -330,13 +330,13 @@ export struct PreviewView {
       if (this.readyToSave) {
         SaveButton({ icon: SaveIconStyle.FULL_FILLED, text: SaveDescription.SAVE_IMAGE, buttonType: ButtonType.Capsule })
           .width('100%').height(48).fontSize(16)
-          .backgroundColor($r('app.color.accent')).fontColor($r('app.color.background'))
+          .backgroundColor($r('app.color.accent')).fontColor($r('app.color.on_accent'))
           .enabled(!this.saving).userCancelEvent(true)
           .onClick((_event: ClickEvent, result: SaveButtonOnClickResult) => this.save(result))
       } else {
         Button(this.exporting ? '生成中…' : this.saving ? '保存中…' : '生成壁纸')
           .width('100%').height(48).fontSize(16)
-          .backgroundColor($r('app.color.accent')).fontColor($r('app.color.background'))
+          .backgroundColor($r('app.color.accent')).fontColor($r('app.color.on_accent'))
           .enabled(this.pixels !== undefined && !this.exporting && !this.saving)
           .onClick(() => this.prepare())
       }
@@ -346,7 +346,7 @@ export struct PreviewView {
   build() {
     if (this.originalView && this.pixels) {
       Stack({ alignContent: Alignment.TopStart }) {
-        Image(this.pixels).width('100%').height('100%').objectFit(ImageFit.Contain).alt('Wallhaven 原图预览')
+        Image(this.pixels).width('100%').height('100%').objectFit(ImageFit.Contain).alt('壁纸原图预览')
         BackButton({ label: '裁剪预览', foreground: '#FFFFFF', buttonBackground: '#88000000',
           onBack: () => this.originalView = false }).margin(16)
       }.width('100%').height('100%').backgroundColor('#111111')
@@ -356,7 +356,8 @@ export struct PreviewView {
           BackButton({ isEnabled: !this.saving, onBack: () => this.onBack() })
           Blank()
           Text(purityLabel(this.wallpaper.purity)).fontSize(13).fontColor($r('app.color.muted')).margin({ right: 10 })
-          Text(this.wallpaper.resolution).fontSize(13).fontColor($r('app.color.muted'))
+          Text(this.session ? this.session.width + 'x' + this.session.height : this.wallpaper.resolution)
+            .fontSize(13).fontColor($r('app.color.muted'))
           Text('#' + this.wallpaper.id).fontSize(13).fontColor($r('app.color.muted')).margin({ left: 12 })
         }.width('100%')
         if (this.wide) {
