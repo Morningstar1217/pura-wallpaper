@@ -18,6 +18,22 @@ test('search percent-encodes keywords and keeps SFW discovery explicit', () => {
 test('latest sorting omits toplist-only options', () => {
   assert.equal(core.searchPath({ text: '', sorting: 'date_added', page: 1 }), '/search?purity=100&categories=111&order=desc&sorting=date_added&page=1');
 });
+test('Wallhaven categories use General, Anime and People bit order independently of purity', () => {
+  const all = core.ALL_WALLHAVEN_CATEGORIES;
+  assert.equal(all, '111');
+  for (const [index, mask] of [[0, '011'], [1, '101'], [2, '110']]) {
+    assert.equal(core.toggleCategory(all, index), mask);
+    assert.equal(core.toggleCategory(mask, index), all);
+  }
+  assert.equal(core.toggleCategory('010', 1), '010');
+  assert.equal(core.toggleCategory('010', 2), '011');
+  const path = core.searchPath({ text: 'night sky', sorting: 'date_added', page: 3, purity: '110', categories: '001' });
+  assert.equal(path, '/search?purity=110&categories=001&order=desc&sorting=date_added&page=3&q=night%20sky');
+  for (const categories of ['000', '1', '1110', '1a1', '111&purity=111']) {
+    assert.throws(() => core.searchPath({ text: '', sorting: 'toplist', page: 1, categories }), /分类参数无效/);
+  }
+  assert.throws(() => core.toggleCategory(all, 3), /分类参数无效/);
+});
 test('collection details require an explicit safe username and valid ID', () => {
   assert.equal(core.collectionPath('my_wallpapers', 123, 2), '/collections/my_wallpapers/123?page=2');
   for (const id of [0, -1, 1.5, NaN]) assert.throws(() => core.collectionPath('alice', id));

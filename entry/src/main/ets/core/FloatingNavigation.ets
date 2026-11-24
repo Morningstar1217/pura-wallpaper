@@ -1,4 +1,4 @@
-export const FLOATING_NAV_HEIGHT: number = 58;
+export const FLOATING_NAV_HEIGHT: number = 62;
 export const FLOATING_NAV_BOTTOM_GAP: number = 12;
 export const FLOATING_NAV_CONTENT_INSET: number = FLOATING_NAV_HEIGHT + FLOATING_NAV_BOTTOM_GAP + 12;
 

@@ -2,6 +2,7 @@ export const API_ORIGIN: string = 'https://wallhaven.cc/api/v1';
 export const TARGET_WIDTH: number = 1320;
 export const TARGET_HEIGHT: number = 2120;
 export const MAX_IMAGE_BYTES: number = 32 * 1024 * 1024;
+export const ALL_WALLHAVEN_CATEGORIES: string = '111';
 
 export interface WallpaperSize {
   width: number;
@@ -59,6 +60,7 @@ export interface SearchQuery {
   sorting: string;
   page: number;
   purity?: string;
+  categories?: string;
 }
 
 export interface CropSelection {
@@ -83,13 +85,25 @@ export function validatePurity(purity: string): string {
   return purity;
 }
 
-export function togglePurity(current: string, index: number): string {
-  validatePurity(current);
-  if (!Number.isInteger(index) || index < 0 || index > 2) throw new Error('分级参数无效');
+export function validateCategories(categories: string): string {
+  if (!/^[01]{3}$/.test(categories) || categories === '000') throw new Error('分类参数无效');
+  return categories;
+}
+
+function toggleFilterBit(current: string, index: number, error: string): string {
+  if (!Number.isInteger(index) || index < 0 || index > 2) throw new Error(error);
   const bits = current.split('');
   bits[index] = bits[index] === '1' ? '0' : '1';
   const next = bits.join('');
   return next === '000' ? current : next;
+}
+
+export function togglePurity(current: string, index: number): string {
+  return toggleFilterBit(validatePurity(current), index, '分级参数无效');
+}
+
+export function toggleCategory(current: string, index: number): string {
+  return toggleFilterBit(validateCategories(current), index, '分类参数无效');
 }
 
 export function purityLabel(purity?: string): string {
@@ -103,7 +117,8 @@ export function searchPath(query: SearchQuery): string {
   const sorting = query.sorting === 'date_added' ? 'date_added' : 'toplist';
   const page = Math.max(1, Math.floor(query.page));
   const purity = validatePurity(query.purity ?? '100');
-  let path = '/search?purity=' + purity + '&categories=111&order=desc&sorting=' + sorting + '&page=' + page;
+  const categories = validateCategories(query.categories ?? ALL_WALLHAVEN_CATEGORIES);
+  let path = '/search?purity=' + purity + '&categories=' + categories + '&order=desc&sorting=' + sorting + '&page=' + page;
   if (sorting === 'toplist') path += '&topRange=1M';
   const text = query.text.trim();
   if (text.length > 0) path += '&q=' + encodeURIComponent(text);

@@ -25,6 +25,7 @@ struct Index {
   @State private page: string = 'home';
   private returnPage: string = 'home';
   @State private cropFullscreen: boolean = false;
+  @State private originalView: boolean = false;
   @State private accountRevision: number = 0;
   @State private selected: Wallpaper | undefined = undefined;
   @State private source: GallerySource = GallerySource.Gallery360;
@@ -52,6 +53,10 @@ struct Index {
   onBackPress(): boolean {
     if (this.busy) return true;
     if (this.keyboardVisible) return false;
+    if (this.originalView) {
+      this.originalView = false;
+      return true;
+    }
     if (this.cropFullscreen) {
       this.cropFullscreen = false;
       return true;
@@ -218,7 +223,8 @@ struct Index {
             .visibility(this.page === 'remote' ? Visibility.Visible : Visibility.Hidden)
         }
         if (this.page === 'preview' && this.selected) {
-          PreviewView({ cropFullscreen: this.$cropFullscreen, deviceProfile: this.deviceProfile,
+          PreviewView({ cropFullscreen: this.$cropFullscreen, originalView: this.$originalView,
+            deviceProfile: this.deviceProfile,
             onBusy: (busy: boolean) => this.busy = busy, wallpaper: this.selected,
             favorite: this.isFavorite(this.selected), favoritesAvailable: this.favoritesAvailable && !this.favoriteSaving,
             readLocal: (id: string) => this.favoritesStore.readImage(id),

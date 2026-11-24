@@ -10,6 +10,7 @@ import { BackButton } from './BackButton';
 export struct PreviewView {
   @Require @Prop wallpaper: Wallpaper;
   @Link cropFullscreen: boolean;
+  @Link originalView: boolean;
   @Require @Prop @Watch('onDeviceProfileChanged') deviceProfile: DeviceProfile;
   onBack: () => void = () => {};
   onBusy: (busy: boolean) => void = () => {};
@@ -20,7 +21,6 @@ export struct PreviewView {
   @State private pixels: image.PixelMap | undefined = undefined;
   @State private loading: boolean = true;
   @State private saving: boolean = false;
-  @State private originalView: boolean = false;
   @State private errorText: string = '';
   @State private statusText: string = '';
   @State private zoom: number = 1;
@@ -51,6 +51,7 @@ export struct PreviewView {
   aboutToDisappear(): void {
     this.active = false;
     this.cropFullscreen = false;
+    this.originalView = false;
     this.generation++;
     this.service.cancel();
     this.original = undefined;
@@ -330,13 +331,7 @@ export struct PreviewView {
   }
 
   build() {
-    if (this.originalView && this.pixels) {
-      Stack({ alignContent: Alignment.TopStart }) {
-        Image(this.pixels).width('100%').height('100%').objectFit(ImageFit.Contain).alt('壁纸原图预览')
-        BackButton({ label: '返回裁剪页面', iconOnly: true, foreground: '#FFFFFF', buttonBackground: '#88000000',
-          onBack: () => this.originalView = false }).margin(16)
-      }.width('100%').height('100%').backgroundColor('#111111')
-    } else {
+    Stack() {
       Column({ space: 14 }) {
         Row() {
           BackButton({ iconOnly: true, isEnabled: !this.saving, onBack: () => this.onBack() })
@@ -367,9 +362,17 @@ export struct PreviewView {
         }
       }.width('100%').height('100%').padding({ top: 8, left: 20, right: 20, bottom: 12 })
       .backgroundColor($r('app.color.background'))
+      .visibility(this.originalView ? Visibility.Hidden : Visibility.Visible)
       .onAreaChange((_old: Area, area: Area) => {
         this.wide = Number(area.width) >= 680 || Number(area.width) > Number(area.height) * 1.1;
       })
-    }
+      if (this.originalView && this.pixels) {
+        Stack({ alignContent: Alignment.TopStart }) {
+          Image(this.pixels).width('100%').height('100%').objectFit(ImageFit.Contain).alt('壁纸原图预览')
+          BackButton({ label: '返回裁剪页面', iconOnly: true, foreground: '#FFFFFF', buttonBackground: '#88000000',
+            onBack: () => this.originalView = false }).margin(16)
+        }.width('100%').height('100%').backgroundColor('#111111')
+      }
+    }.width('100%').height('100%')
   }
 }

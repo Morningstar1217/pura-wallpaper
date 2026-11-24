@@ -38,15 +38,39 @@
     },
     {
       "name": "nav_glass",
-      "value": "#BFF7F9FA"
+      "value": "#F2F4F7F7"
+    },
+    {
+      "name": "nav_glass_light",
+      "value": "#FFFFFFFF"
     },
     {
       "name": "nav_rim",
-      "value": "#AFFFFFFF"
+      "value": "#FFBCCBCC"
     },
     {
       "name": "nav_selected",
-      "value": "#5BC2DCD8"
+      "value": "#FFDFEFEB"
+    },
+    {
+      "name": "nav_selected_light",
+      "value": "#B5FFFFFF"
+    },
+    {
+      "name": "nav_selected_rim",
+      "value": "#FFB2D5CD"
+    },
+    {
+      "name": "nav_active_text",
+      "value": "#065C56"
+    },
+    {
+      "name": "nav_press_light",
+      "value": "#3D72D8CD"
+    },
+    {
+      "name": "nav_shadow",
+      "value": "#34192B2B"
     },
     {
       "name": "error",

@@ -1,5 +1,6 @@
 import { BackButton } from './BackButton';
-import { Wallpaper, WallpaperPage, Collection, appendWallpapers, togglePurity, purityLabel } from '../core/Wallpaper';
+import { Wallpaper, WallpaperPage, Collection, appendWallpapers, togglePurity, purityLabel,
+  ALL_WALLHAVEN_CATEGORIES, toggleCategory } from '../core/Wallpaper';
 import { GALLERY_TOPICS, GalleryTopic } from '../core/Gallery360';
 import { WallhavenService } from '../services/WallhavenService';
 import { Gallery360Service } from '../services/Gallery360Service';
@@ -25,6 +26,7 @@ export struct HomeView {
   @State private username: string = '';
   @State private sorting: string = 'toplist';
   @State private purity: string = '100';
+  @State private categories: string = ALL_WALLHAVEN_CATEGORIES;
   @State private tokenAvailable: boolean = false;
   @State private query: string = '';
   @State private submittedQuery: string = '';
@@ -109,7 +111,8 @@ export struct HomeView {
       return this.service.collection(this.username, this.selectedCollection.id, page, this.purity);
     }
     if (this.source === GallerySource.Gallery360) return this.gallery.search(this.submittedQuery, this.topic, page);
-    return this.service.search({ text: this.submittedQuery, sorting: this.sorting, page: page, purity: this.purity });
+    return this.service.search({ text: this.submittedQuery, sorting: this.sorting, page: page, purity: this.purity,
+      categories: this.categories });
   }
 
   private async reload(): Promise<void> {
@@ -178,20 +181,34 @@ export struct HomeView {
   }
 
   @Builder
-  private topicButton(topic: GalleryTopic) {
+  private filterTab(label: string, topicId: string, categoryIndex: number) {
     Button({ type: ButtonType.Normal }) {
-      Column({ space: 4 }) {
-        Text(topic.label).fontSize(14).maxLines(1)
-          .fontColor(this.submittedQuery.length === 0 && this.topic === topic.id ?
-            $r('app.color.accent') : $r('app.color.muted'))
-          .fontWeight(this.submittedQuery.length === 0 && this.topic === topic.id ? FontWeight.Bold : FontWeight.Medium)
-        Row().width(16).height(2).borderRadius(1)
-          .backgroundColor(this.submittedQuery.length === 0 && this.topic === topic.id ?
-            $r('app.color.accent') : Color.Transparent)
-      }.justifyContent(FlexAlign.Center)
+      Stack() {
+        Text(label).fontSize(14).maxLines(1)
+          .fontColor(this.isFilterSelected(topicId, categoryIndex) ? $r('app.color.accent') : $r('app.color.muted'))
+          .fontWeight(this.isFilterSelected(topicId, categoryIndex) ? FontWeight.Bold : FontWeight.Medium)
+        if (this.isFilterSelected(topicId, categoryIndex)) {
+          Row().width(16).height(2).borderRadius(1).align(Alignment.Bottom).margin({ bottom: 5 })
+            .backgroundColor($r('app.color.accent'))
+        }
+      }.height(44)
     }.height(44).padding({ left: 7, right: 7 }).backgroundColor(Color.Transparent)
-      .accessibilitySelected(this.submittedQuery.length === 0 && this.topic === topic.id)
-      .onClick(() => this.selectTopic(topic.id))
+      .accessibilitySelected(this.isFilterSelected(topicId, categoryIndex)).onClick(() => {
+        if (categoryIndex >= 0) this.selectCategory(categoryIndex);
+        else this.selectTopic(topicId);
+      })
+  }
+
+  private isFilterSelected(topicId: string, categoryIndex: number): boolean {
+    return categoryIndex >= 0 ? this.categories.charAt(categoryIndex) === '1' :
+      this.submittedQuery.length === 0 && this.topic === topicId;
+  }
+
+  private selectCategory(index: number): void {
+    const next = toggleCategory(this.categories, index);
+    if (next === this.categories) return;
+    this.categories = next;
+    this.reload();
   }
 
   private selectTopic(topic: string): void {
@@ -315,17 +332,15 @@ export struct HomeView {
           if (this.source === GallerySource.Gallery360) {
             Row({ space: 8 }) {
               ForEach(GALLERY_TOPICS, (topic: GalleryTopic) => {
-                this.topicButton(topic)
+                this.filterTab(topic.label, topic.id, -1)
               }, (topic: GalleryTopic) => topic.id)
-            }
+            }.height(44).alignItems(VerticalAlign.Center)
           } else {
-            Row({ space: 5 }) {
-              this.sortButton('热门', 'toplist')
-              this.sortButton('最新', 'date_added')
-              this.purityButton('SFW', 0)
-              this.purityButton('Sketchy', 1)
-              this.purityButton('NSFW', 2)
-            }
+            Row({ space: 8 }) {
+              this.filterTab('通用', '', 0)
+              this.filterTab('动漫', '', 1)
+              this.filterTab('人物', '', 2)
+            }.height(44).alignItems(VerticalAlign.Center)
           }
         }.layoutWeight(1).height(44).align(Alignment.Start)
           .scrollable(ScrollDirection.Horizontal).scrollBar(BarState.Off)
@@ -340,7 +355,19 @@ export struct HomeView {
             else this.searchOpen = true;
           })
         SettingsButton({ onSettings: () => this.onSettings() })
-      }.width('100%').alignItems(VerticalAlign.Center)
+      }.width('100%').height(44).alignItems(VerticalAlign.Center)
+      if (this.source === GallerySource.Wallhaven) {
+        Scroll() {
+          Row({ space: 5 }) {
+            this.sortButton('热门', 'toplist')
+            this.sortButton('最新', 'date_added')
+            this.purityButton('SFW', 0)
+            this.purityButton('Sketchy', 1)
+            this.purityButton('NSFW', 2)
+          }.height(38).alignItems(VerticalAlign.Center)
+        }.width('100%').height(38).align(Alignment.Start)
+          .scrollable(ScrollDirection.Horizontal).scrollBar(BarState.Off)
+      }
       if (this.searchOpen) {
         Search({ value: this.query, placeholder: '搜索壁纸', controller: this.searchController })
           .id('gallerySearchInput').width('100%').height(44).margin({ bottom: 6 })
