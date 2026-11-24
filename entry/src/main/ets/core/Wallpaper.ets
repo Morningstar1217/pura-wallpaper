@@ -61,6 +61,38 @@ export interface SearchQuery {
   page: number;
   purity?: string;
   categories?: string;
+  topRange?: string;
+}
+
+export interface WallhavenSearchOption {
+  id: string;
+  label: string;
+}
+
+export const WALLHAVEN_SORT_OPTIONS: WallhavenSearchOption[] = [
+  { id: 'hot', label: '热门' },
+  { id: 'date_added', label: '最新' },
+  { id: 'toplist', label: '排行榜' },
+  { id: 'random', label: '随机' },
+  { id: 'views', label: '浏览量' },
+  { id: 'favorites', label: '收藏量' },
+  { id: 'relevance', label: '相关性' }
+];
+
+export const WALLHAVEN_TOP_RANGES: WallhavenSearchOption[] = [
+  { id: '1d', label: '近 1 天' },
+  { id: '3d', label: '近 3 天' },
+  { id: '1w', label: '近 1 周' },
+  { id: '1M', label: '近 1 月' },
+  { id: '3M', label: '近 3 月' },
+  { id: '6M', label: '近 6 月' },
+  { id: '1y', label: '近 1 年' }
+];
+
+export const DEFAULT_WALLHAVEN_TOP_RANGE: string = '1M';
+
+export function wallhavenOptionLabel(options: WallhavenSearchOption[], id: string): string {
+  return options.find((option: WallhavenSearchOption) => option.id === id)?.label ?? '';
 }
 
 export interface CropSelection {
@@ -114,12 +146,17 @@ export function purityLabel(purity?: string): string {
 }
 
 export function searchPath(query: SearchQuery): string {
-  const sorting = query.sorting === 'date_added' ? 'date_added' : 'toplist';
+  const sorting = query.sorting;
+  if (wallhavenOptionLabel(WALLHAVEN_SORT_OPTIONS, sorting).length === 0) throw new Error('排序参数无效');
   const page = Math.max(1, Math.floor(query.page));
   const purity = validatePurity(query.purity ?? '100');
   const categories = validateCategories(query.categories ?? ALL_WALLHAVEN_CATEGORIES);
   let path = '/search?purity=' + purity + '&categories=' + categories + '&order=desc&sorting=' + sorting + '&page=' + page;
-  if (sorting === 'toplist') path += '&topRange=1M';
+  if (sorting === 'toplist') {
+    const topRange = query.topRange ?? DEFAULT_WALLHAVEN_TOP_RANGE;
+    if (wallhavenOptionLabel(WALLHAVEN_TOP_RANGES, topRange).length === 0) throw new Error('排行榜时间无效');
+    path += '&topRange=' + topRange;
+  }
   const text = query.text.trim();
   if (text.length > 0) path += '&q=' + encodeURIComponent(text);
   return path;

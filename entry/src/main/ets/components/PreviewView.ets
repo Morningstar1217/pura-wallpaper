@@ -22,7 +22,6 @@ export struct PreviewView {
   @State private loading: boolean = true;
   @State private saving: boolean = false;
   @State private errorText: string = '';
-  @State private statusText: string = '';
   @State private zoom: number = 1;
   @State private centerX: number = 0.5;
   @State private centerY: number = 0.5;
@@ -121,9 +120,13 @@ export struct PreviewView {
     return -crop.y * height / crop.height;
   }
 
-  private clearSaveFeedback(): void {
-    this.errorText = '';
-    this.statusText = '';
+  private showSaveToast(message: string): void {
+    if (!this.active) return;
+    try {
+      this.getUIContext().getPromptAction().showToast({ message: message, duration: 2000 });
+    } catch {
+      console.warn('Unable to show gallery save feedback');
+    }
   }
 
   private move(event: GestureEvent): void {
@@ -133,34 +136,29 @@ export struct PreviewView {
     const y = this.panY - event.offsetY * crop.height / this.frameHeight / this.session.height;
     this.centerX = clamp(x, crop.width / 2 / this.session.width, 1 - crop.width / 2 / this.session.width);
     this.centerY = clamp(y, crop.height / 2 / this.session.height, 1 - crop.height / 2 / this.session.height);
-    this.clearSaveFeedback();
   }
 
   private async save(result: SaveButtonOnClickResult): Promise<void> {
+    const session = this.session;
+    if (!this.active || !session || this.saving) return;
     if (result !== SaveButtonOnClickResult.SUCCESS) {
       if (result === SaveButtonOnClickResult.TEMPORARY_AUTHORIZATION_FAILED) {
-        this.errorText = '未获得保存授权，请重试';
+        this.showSaveToast('未获得保存授权，请重试');
       }
       return;
     }
-    const session = this.session;
-    if (!this.active || !session || this.saving) return;
     const target: WallpaperSize = { width: this.deviceProfile.width, height: this.deviceProfile.height };
     const generation = this.generation;
     this.saving = true;
     this.onBusy(true);
-    this.clearSaveFeedback();
     try {
       const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
       const saved = await exportAndSaveWallpaper(context, session, this.selection(), target, this.wallpaper.id,
         () => this.active && generation === this.generation && this.deviceProfile.width === target.width &&
           this.deviceProfile.height === target.height);
-      if (this.active) {
-        if (saved) this.statusText = '已保存到图库，可在图库中设为壁纸';
-        else this.errorText = '屏幕尺寸已变化，请重新保存';
-      }
+      this.showSaveToast(saved ? '已保存到图库' : '屏幕尺寸已变化，请重新保存');
     } catch {
-      if (this.active) this.errorText = '保存到图库失败，请重试';
+      this.showSaveToast('保存到图库失败，请重试');
     } finally {
       this.saving = false;
       if (!this.active) this.releaseSession();
@@ -185,7 +183,6 @@ export struct PreviewView {
             }).onActionUpdate((event: GestureEvent) => {
               if (this.saving) return;
               this.zoom = clamp(this.pinchZoom * event.scale, 1, 3);
-              this.clearSaveFeedback();
             }),
             PanGesture().onActionStart(() => {
               if (!this.session) return;
@@ -258,7 +255,6 @@ export struct PreviewView {
 
   private onDeviceProfileChanged(): void {
     this.cropFullscreen = false;
-    this.clearSaveFeedback();
     this.updateFrameSize();
   }
 
@@ -290,7 +286,6 @@ export struct PreviewView {
             this.zoom = 1;
             this.centerX = 0.5;
             this.centerY = 0.5;
-            this.clearSaveFeedback();
           })
       }.width('100%')
       Column({ space: 4 }) {
@@ -302,31 +297,32 @@ export struct PreviewView {
             .onChange((value: number) => {
               if (this.saving) return;
               this.zoom = value;
-              this.clearSaveFeedback();
             })
           Text(this.zoom.toFixed(1) + '×').fontSize(13).width(36).fontColor($r('app.color.muted'))
         }.width('100%')
         Text('拖动调整位置，双指缩放').fontSize(12).fontColor($r('app.color.muted'))
           .alignSelf(ItemAlign.Start)
       }
-      if (this.statusText.length > 0) {
-        Text(this.statusText).fontSize(14).fontColor($r('app.color.accent')).lineHeight(22)
-      }
-      if (this.errorText.length > 0 && this.pixels) {
-        Text(this.errorText).fontSize(14).fontColor($r('app.color.error')).lineHeight(22)
-      }
-      SaveButton({ icon: SaveIconStyle.FULL_FILLED, text: SaveDescription.SAVE_TO_GALLERY, buttonType: ButtonType.Capsule })
-        .width('100%').constraintSize({ minHeight: 52 }).fontSize(16).fontWeight(FontWeight.Medium)
-        .iconSize(24).textIconSpace(8).iconColor($r('app.color.on_accent'))
-        .backgroundColor($r('app.color.accent')).fontColor($r('app.color.on_accent'))
-        .enabled(this.pixels !== undefined && !this.saving).userCancelEvent(true)
-        .onClick((_event: ClickEvent, result: SaveButtonOnClickResult) => this.save(result))
-      if (this.saving) {
-        Row({ space: 8 }) {
-          LoadingProgress().width(18).height(18).color($r('app.color.accent'))
-          Text('正在裁剪并保存…').fontSize(13).fontColor($r('app.color.muted'))
-        }.width('100%').justifyContent(FlexAlign.Center)
-      }
+      Row() {
+        Row().width(28).height(44).hitTestBehavior(HitTestMode.None)
+        Stack() {
+          SaveButton({ icon: SaveIconStyle.FULL_FILLED, text: SaveDescription.SAVE_TO_GALLERY,
+            buttonType: ButtonType.Capsule })
+            .width(148).height(44).fontSize(14).fontWeight(FontWeight.Medium)
+            .iconSize(18).textIconSpace(6).iconColor($r('app.color.on_accent'))
+            .backgroundColor($r('app.color.accent')).fontColor($r('app.color.on_accent'))
+            .enabled(this.pixels !== undefined).stateEffect(false).userCancelEvent(true)
+            .onClick((_event: ClickEvent, result: SaveButtonOnClickResult) => this.save(result))
+        }.width(148).height(44)
+          // Block repeat taps without toggling the secure button's disabled appearance.
+          .hitTestBehavior(this.saving ? HitTestMode.Block : HitTestMode.Default)
+        Stack() {
+          if (this.saving) {
+            LoadingProgress().width(16).height(16).color($r('app.color.accent'))
+              .accessibilityText('正在保存到图库')
+          }
+        }.width(28).height(44).hitTestBehavior(HitTestMode.None)
+      }.width('100%').height(44).justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
     }.width('100%').padding(18).borderRadius(24).backgroundColor($r('app.color.surface'))
   }
 

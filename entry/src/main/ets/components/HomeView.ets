@@ -1,6 +1,7 @@
 import { BackButton } from './BackButton';
 import { Wallpaper, WallpaperPage, Collection, appendWallpapers, togglePurity, purityLabel,
-  ALL_WALLHAVEN_CATEGORIES, toggleCategory } from '../core/Wallpaper';
+  ALL_WALLHAVEN_CATEGORIES, toggleCategory, WALLHAVEN_SORT_OPTIONS, WALLHAVEN_TOP_RANGES,
+  DEFAULT_WALLHAVEN_TOP_RANGE, WallhavenSearchOption, wallhavenOptionLabel } from '../core/Wallpaper';
 import { GALLERY_TOPICS, GalleryTopic } from '../core/Gallery360';
 import { WallhavenService } from '../services/WallhavenService';
 import { Gallery360Service } from '../services/Gallery360Service';
@@ -24,7 +25,8 @@ export struct HomeView {
   onBack: () => void = () => {};
   @State private topic: string = 'all';
   @State private username: string = '';
-  @State private sorting: string = 'toplist';
+  @State private sorting: string = 'hot';
+  @State private topRange: string = DEFAULT_WALLHAVEN_TOP_RANGE;
   @State private purity: string = '100';
   @State private categories: string = ALL_WALLHAVEN_CATEGORIES;
   @State private tokenAvailable: boolean = false;
@@ -112,7 +114,11 @@ export struct HomeView {
     }
     if (this.source === GallerySource.Gallery360) return this.gallery.search(this.submittedQuery, this.topic, page);
     return this.service.search({ text: this.submittedQuery, sorting: this.sorting, page: page, purity: this.purity,
-      categories: this.categories });
+      categories: this.categories, topRange: this.topRange });
+  }
+
+  private isRandomGallery(): boolean {
+    return !this.collectionsMode && this.source === GallerySource.Wallhaven && this.sorting === 'random';
   }
 
   private async reload(): Promise<void> {
@@ -138,7 +144,8 @@ export struct HomeView {
         if (generation === this.generation) {
           this.wallpapers = result.data;
           this.page = 1;
-          this.lastPage = result.meta.last_page;
+          // Wallhaven's API may choose a new random order on each request. Offer a fresh batch instead of paging it.
+          this.lastPage = this.isRandomGallery() ? 1 : result.meta.last_page;
         }
       }
     } catch (error) {
@@ -182,17 +189,11 @@ export struct HomeView {
 
   @Builder
   private filterTab(label: string, topicId: string, categoryIndex: number) {
-    Button({ type: ButtonType.Normal }) {
-      Stack() {
-        Text(label).fontSize(14).maxLines(1)
-          .fontColor(this.isFilterSelected(topicId, categoryIndex) ? $r('app.color.accent') : $r('app.color.muted'))
-          .fontWeight(this.isFilterSelected(topicId, categoryIndex) ? FontWeight.Bold : FontWeight.Medium)
-        if (this.isFilterSelected(topicId, categoryIndex)) {
-          Row().width(16).height(2).borderRadius(1).align(Alignment.Bottom).margin({ bottom: 5 })
-            .backgroundColor($r('app.color.accent'))
-        }
-      }.height(44)
-    }.height(44).padding({ left: 7, right: 7 }).backgroundColor(Color.Transparent)
+    Button(label, { type: ButtonType.Normal })
+      .height(34).padding({ left: 11, right: 11 }).borderRadius(17).fontSize(14)
+      .backgroundColor(this.isFilterSelected(topicId, categoryIndex) ? $r('app.color.accent_panel') : Color.Transparent)
+      .fontColor(this.isFilterSelected(topicId, categoryIndex) ? $r('app.color.accent') : $r('app.color.muted'))
+      .fontWeight(this.isFilterSelected(topicId, categoryIndex) ? FontWeight.Medium : FontWeight.Regular)
       .accessibilitySelected(this.isFilterSelected(topicId, categoryIndex)).onClick(() => {
         if (categoryIndex >= 0) this.selectCategory(categoryIndex);
         else this.selectTopic(topicId);
@@ -227,17 +228,35 @@ export struct HomeView {
   }
 
   @Builder
-  private sortButton(label: string, sorting: string) {
-    Button(label, { type: ButtonType.Normal })
-      .height(32).fontSize(13).borderRadius(16)
-      .backgroundColor(this.sorting === sorting ? $r('app.color.surface') : Color.Transparent)
-      .fontColor(this.sorting === sorting ? $r('app.color.accent') : $r('app.color.muted'))
-      .fontWeight(this.sorting === sorting ? FontWeight.Bold : FontWeight.Regular)
-      .onClick(() => {
-        if (this.sorting === sorting) return;
-        this.sorting = sorting;
-        this.reload();
-      })
+  private sortMenu(isRange: boolean) {
+    Menu() {
+      ForEach(isRange ? WALLHAVEN_TOP_RANGES : WALLHAVEN_SORT_OPTIONS, (item: WallhavenSearchOption) => {
+        MenuItem({ content: item.label })
+          .selectIcon(true).selected((isRange ? this.topRange : this.sorting) === item.id)
+          .onChange((selected: boolean) => {
+            if (!selected) return;
+            if (isRange) this.topRange = item.id;
+            else this.sorting = item.id;
+            this.reload();
+          })
+      }, (item: WallhavenSearchOption) => item.id)
+    }
+  }
+
+  @Builder
+  private sortControl(isRange: boolean) {
+    Button({ type: ButtonType.Normal }) {
+      Row({ space: 5 }) {
+        Text(isRange ? wallhavenOptionLabel(WALLHAVEN_TOP_RANGES, this.topRange) :
+          wallhavenOptionLabel(WALLHAVEN_SORT_OPTIONS, this.sorting))
+          .fontSize(13).maxLines(1).fontWeight(FontWeight.Medium).fontColor($r('app.color.text'))
+        SymbolGlyph($r('sys.symbol.chevron_down')).fontSize(11)
+          .fontColor([$r('app.color.muted')]).accessibilityLevel('no')
+      }.alignItems(VerticalAlign.Center)
+    }.height(32).padding({ left: 9, right: 9 }).borderRadius(16).backgroundColor($r('app.color.surface'))
+      .accessibilityText(isRange ? '排行榜时间：' + wallhavenOptionLabel(WALLHAVEN_TOP_RANGES, this.topRange) :
+        '排序：' + wallhavenOptionLabel(WALLHAVEN_SORT_OPTIONS, this.sorting))
+      .bindMenu(this.sortMenu(isRange))
   }
 
   @Builder
@@ -359,8 +378,14 @@ export struct HomeView {
       if (this.source === GallerySource.Wallhaven) {
         Scroll() {
           Row({ space: 5 }) {
-            this.sortButton('热门', 'toplist')
-            this.sortButton('最新', 'date_added')
+            this.sortControl(false)
+            if (this.sorting === 'toplist') {
+              this.sortControl(true)
+            } else if (this.sorting === 'random') {
+              Button('换一批', { type: ButtonType.Normal }).height(32).fontSize(13).borderRadius(16)
+                .padding({ left: 8, right: 8 }).backgroundColor(Color.Transparent).fontColor($r('app.color.accent'))
+                .enabled(!this.loading).onClick(() => this.reload())
+            }
             this.purityButton('SFW', 0)
             this.purityButton('Sketchy', 1)
             this.purityButton('NSFW', 2)

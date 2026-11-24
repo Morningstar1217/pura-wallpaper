@@ -1,6 +1,11 @@
-export const FLOATING_NAV_HEIGHT: number = 62;
-export const FLOATING_NAV_BOTTOM_GAP: number = 12;
-export const FLOATING_NAV_CONTENT_INSET: number = FLOATING_NAV_HEIGHT + FLOATING_NAV_BOTTOM_GAP + 12;
+export const FLOATING_NAV_HEIGHT: number = 52;
+export const FLOATING_NAV_BOTTOM_GAP: number = 8;
+export const FLOATING_NAV_CONTENT_INSET: number = FLOATING_NAV_HEIGHT + FLOATING_NAV_BOTTOM_GAP + 8;
+
+export function navigationGlowCenter(offset: number, size: number): number {
+  if (!Number.isFinite(offset) || !Number.isFinite(size) || size <= 0) return 0.5;
+  return Math.max(0, Math.min(1, offset / size));
+}
 
 export class NavigationScroll {
   private travel: number = 0;

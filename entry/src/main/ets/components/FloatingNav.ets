@@ -1,5 +1,5 @@
 import { curves, uiMaterial } from '@kit.ArkUI';
-import { FLOATING_NAV_HEIGHT } from '../core/FloatingNavigation';
+import { FLOATING_NAV_HEIGHT, navigationGlowCenter } from '../core/FloatingNavigation';
 import { createNavigationMaterial } from '../services/NavigationMaterial';
 
 @Component
@@ -9,29 +9,46 @@ export struct FloatingNav {
   @Prop keyboardVisible: boolean = false;
   onSelect: (index: number) => void = () => {};
   @State private trackWidth: number = 0;
+  @State private pressedIndex: number = -1;
+  @State private glowX: string = '50%';
+  @State private glowY: string = '50%';
   @State private material: uiMaterial.ImmersiveMaterial | undefined = undefined;
 
   aboutToAppear(): void {
     this.material = createNavigationMaterial();
   }
 
+  private updateGlow(index: number, event: TouchEvent): void {
+    if (event.type === TouchType.Down && event.touches.length > 0) {
+      this.glowX = (navigationGlowCenter(event.touches[0].x, this.trackWidth / 3) * 100) + '%';
+      this.glowY = (navigationGlowCenter(event.touches[0].y, FLOATING_NAV_HEIGHT - 8) * 100) + '%';
+      this.pressedIndex = index;
+    } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+      this.pressedIndex = -1;
+    }
+  }
+
   @Builder
   private item(index: number, label: string, icon: Resource, activeIcon: Resource) {
     Button({ type: ButtonType.Normal }) {
-      Column({ space: 2 }) {
-        SymbolGlyph(this.selected === index ? activeIcon : icon).fontSize(22)
-          .fontColor([this.selected === index ? $r('app.color.nav_active_text') : $r('app.color.text')])
-          .scale({ x: this.selected === index ? 1.08 : 1, y: this.selected === index ? 1.08 : 1 })
-          .animation({ curve: curves.springMotion(0.32, 0.78) }).accessibilityLevel('no')
-        Text(label).fontSize(12).maxLines(1)
-          .fontWeight(this.selected === index ? FontWeight.Bold : FontWeight.Medium)
-          .fontColor(this.selected === index ? $r('app.color.nav_active_text') : $r('app.color.text'))
-      }.width('100%').height('100%').justifyContent(FlexAlign.Center)
-    }.height(FLOATING_NAV_HEIGHT - 10).layoutWeight(1).padding(0).borderRadius(24).backgroundColor(Color.Transparent)
-      .stateStyles({
-        normal: { .backgroundColor(Color.Transparent) },
-        pressed: { .backgroundColor($r('app.color.nav_press_light')) }
-      })
+      Stack() {
+        Row().width('100%').height('100%').borderRadius(22)
+          .radialGradient({ center: [this.glowX, this.glowY], radius: 30,
+            colors: [[$r('app.color.nav_press_light'), 0], [Color.Transparent, 1]] })
+          .opacity(this.pressedIndex === index ? 1 : 0)
+          .animation({ duration: this.pressedIndex === index ? 85 : 200, curve: Curve.EaseOut })
+          .hitTestBehavior(HitTestMode.None)
+        Column({ space: 1 }) {
+          SymbolGlyph(this.selected === index ? activeIcon : icon).fontSize(20)
+            .fontColor([this.selected === index ? $r('app.color.nav_active_text') : $r('app.color.text')])
+            .accessibilityLevel('no')
+          Text(label).fontSize(11).maxLines(1)
+            .fontWeight(this.selected === index ? FontWeight.Bold : FontWeight.Medium)
+            .fontColor(this.selected === index ? $r('app.color.nav_active_text') : $r('app.color.text'))
+        }.width('100%').height('100%').justifyContent(FlexAlign.Center).hitTestBehavior(HitTestMode.None)
+      }.width('100%').height('100%')
+    }.height(FLOATING_NAV_HEIGHT - 8).layoutWeight(1).padding(0).borderRadius(22).backgroundColor(Color.Transparent)
+      .stateEffect(false).onTouch((event: TouchEvent) => this.updateGlow(index, event))
       .focusable(!this.hidden && !this.keyboardVisible)
       .accessibilityText(label).accessibilitySelected(this.selected === index).onClick(() => this.onSelect(index))
   }
@@ -39,7 +56,7 @@ export struct FloatingNav {
   @Builder
   private items() {
     if (this.trackWidth > 0) {
-      Row().width(Math.max(0, this.trackWidth / 3 - 4)).height(FLOATING_NAV_HEIGHT - 12).borderRadius(24)
+      Row().width(Math.max(0, this.trackWidth / 3 - 4)).height(FLOATING_NAV_HEIGHT - 10).borderRadius(21)
         .backgroundColor($r('app.color.nav_selected'))
         .linearGradient({ direction: GradientDirection.Bottom,
           colors: [[$r('app.color.nav_selected_light'), 0], [Color.Transparent, 1]] })
@@ -57,19 +74,19 @@ export struct FloatingNav {
   build() {
     Stack() {
       if (this.material) {
-        Row().width('100%').height('100%').borderRadius(31)
+        Row().width('100%').height('100%').borderRadius(26)
           .systemMaterial(this.material).hitTestBehavior(HitTestMode.None)
       }
-      Row().width('100%').height('100%').borderRadius(31)
+      Row().width('100%').height('100%').borderRadius(26)
         .linearGradient({ direction: GradientDirection.Bottom,
           colors: [[$r('app.color.nav_glass_light'), 0], [$r('app.color.nav_glass'), 0.42],
             [$r('app.color.nav_glass'), 1]] })
         .border({ width: 1, color: $r('app.color.nav_rim') }).hitTestBehavior(HitTestMode.None)
       Stack({ alignContent: Alignment.Start }) {
         this.items()
-      }.width('100%').height('100%').padding(5)
-    }.width('86%').constraintSize({ maxWidth: 360 }).height(FLOATING_NAV_HEIGHT).borderRadius(31)
-      .shadow({ radius: 18, color: $r('app.color.nav_shadow'), offsetX: 0, offsetY: 6 })
+      }.width('100%').height('100%').padding(4)
+    }.width('74%').constraintSize({ maxWidth: 296 }).height(FLOATING_NAV_HEIGHT).borderRadius(26)
+      .shadow({ radius: 12, color: $r('app.color.nav_shadow'), offsetX: 0, offsetY: 4 })
       .translate({ y: this.hidden ? FLOATING_NAV_HEIGHT + 24 : 0 }).opacity(this.hidden ? 0 : 1)
       .animation({ duration: 235, curve: Curve.Friction })
       .visibility(this.keyboardVisible ? Visibility.Hidden : Visibility.Visible)

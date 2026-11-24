@@ -18,6 +18,28 @@ test('search percent-encodes keywords and keeps SFW discovery explicit', () => {
 test('latest sorting omits toplist-only options', () => {
   assert.equal(core.searchPath({ text: '', sorting: 'date_added', page: 1 }), '/search?purity=100&categories=111&order=desc&sorting=date_added&page=1');
 });
+test('Wallhaven exposes every official search sort and keeps Hot separate from Toplist', () => {
+  const expected = ['hot', 'date_added', 'toplist', 'random', 'views', 'favorites', 'relevance'];
+  assert.deepEqual(core.WALLHAVEN_SORT_OPTIONS.map(({ id }) => id), expected);
+  for (const sorting of expected) {
+    const params = new URLSearchParams(core.searchPath({ text: '山', sorting, page: 2, topRange: '3d',
+      categories: '110', purity: '100' }).split('?')[1]);
+    assert.equal(params.get('sorting'), sorting);
+    assert.equal(params.get('topRange'), sorting === 'toplist' ? '3d' : null);
+    assert.equal(params.get('categories'), '110');
+    assert.equal(params.get('page'), '2');
+    assert.equal(params.get('q'), '山');
+  }
+  assert.throws(() => core.searchPath({ text: '', sorting: 'hot&purity=111', page: 1 }), /排序参数无效/);
+});
+test('Toplist supports the seven official periods and defaults to one month', () => {
+  const periods = ['1d', '3d', '1w', '1M', '3M', '6M', '1y'];
+  const query = { text: '', sorting: 'toplist', page: 1 };
+  assert.deepEqual(core.WALLHAVEN_TOP_RANGES.map(({ id }) => id), periods);
+  assert.ok(core.searchPath(query).endsWith('&topRange=1M'));
+  for (const topRange of periods) assert.ok(core.searchPath({ ...query, topRange }).endsWith('&topRange=' + topRange));
+  assert.throws(() => core.searchPath({ ...query, topRange: '1M&sorting=hot' }), /排行榜时间无效/);
+});
 test('Wallhaven categories use General, Anime and People bit order independently of purity', () => {
   const all = core.ALL_WALLHAVEN_CATEGORIES;
   assert.equal(all, '111');

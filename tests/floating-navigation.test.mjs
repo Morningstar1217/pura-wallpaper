@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { moduleUrl } from './source-loader.mjs';
 
-const { NavigationScroll, FLOATING_NAV_HEIGHT, FLOATING_NAV_BOTTOM_GAP, FLOATING_NAV_CONTENT_INSET } =
+const { NavigationScroll, navigationGlowCenter, FLOATING_NAV_HEIGHT, FLOATING_NAV_BOTTOM_GAP, FLOATING_NAV_CONTENT_INSET } =
   await import(moduleUrl('entry/src/main/ets/core/FloatingNavigation.ets'));
 
 test('floating navigation hides while scrolling deeper, then reappears sooner on reversal', () => {
@@ -40,6 +40,15 @@ test('reversals discard jitter and invalid or programmatic deltas do not count',
 
 test('scrollable pages reserve enough end space to clear the floating capsule', () => {
   assert.ok(FLOATING_NAV_CONTENT_INSET > FLOATING_NAV_HEIGHT + FLOATING_NAV_BOTTOM_GAP);
+});
+
+test('touch glow follows a local touch point and clamps edge cases', () => {
+  assert.equal(navigationGlowCenter(20, 80), 0.25);
+  assert.equal(navigationGlowCenter(33, 44), 0.75);
+  assert.equal(navigationGlowCenter(-1, 44), 0);
+  assert.equal(navigationGlowCenter(101, 80), 1);
+  assert.equal(navigationGlowCenter(10, 0), 0.5);
+  assert.equal(navigationGlowCenter(NaN, 44), 0.5);
 });
 
 function rgb(hex) {
